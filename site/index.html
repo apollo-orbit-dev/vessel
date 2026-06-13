@@ -56,10 +56,12 @@
           </p>
           <div class="cta reveal" style="--d: 180ms">
             <a class="btn btn-primary" href="/app/">Get the host →</a>
-            <a class="btn btn-ghost" href="https://github.com/apollo-orbit-dev/vessel">Read the docs</a>
+            <a class="btn btn-ghost" href="#run-it-yourself">Run it yourself</a>
           </div>
           <p class="fineprint reveal" style="--d: 240ms">
-            Installs as a PWA. Promptless save on Chromium; Firefox &amp; Safari run degraded (open + download-to-save).
+            Installs as a PWA — runs locally, works offline after the first load (no server). Promptless save on
+            Chromium; Firefox &amp; Safari run degraded (open + download-to-save). ·
+            <a href="https://github.com/apollo-orbit-dev/vessel">Docs →</a>
           </p>
         </div>
 
@@ -121,6 +123,29 @@
         </div>
       </section>
 
+      <section id="run-it-yourself" class="selfhost">
+        <p class="eyebrow center">Run it yourself</p>
+        <div class="selfhost-inner">
+          <p class="selfhost-lede">
+            Prefer not to depend on getvessel.dev? The host is a static app with no backend — build and serve it
+            yourself and it runs identically (and offline). Same code, your origin.
+          </p>
+          <div class="codeblock">
+            <button class="copy" id="copyCmds" type="button" aria-label="Copy commands">Copy</button>
+            <pre id="cmds"><code>git clone https://github.com/apollo-orbit-dev/vessel.git
+cd vessel
+npm install
+npm run build -w @vessel/host
+npm run preview -w @vessel/host</code></pre>
+          </div>
+          <p class="selfhost-foot">
+            Then open the printed <code>http://localhost:4173/app/</code> in Chromium and install the PWA —
+            localhost is a secure context, so file handling + install work. Full guide in the
+            <a href="https://github.com/apollo-orbit-dev/vessel">docs</a>.
+          </p>
+        </div>
+      </section>
+
       <section id="safety" class="safety">
         <div class="safety-inner">
           <p class="eyebrow">The safety claim</p>
@@ -149,5 +174,30 @@
         <a href="https://github.com/apollo-orbit-dev/vessel">github.com/apollo-orbit-dev/vessel</a>
       </p>
     </footer>
+
+    <script>
+      (function () {
+        var btn = document.getElementById("copyCmds");
+        var cmds = document.getElementById("cmds");
+        if (!btn || !cmds) return;
+        btn.addEventListener("click", function () {
+          var done = function (label) {
+            var prev = "Copy";
+            btn.textContent = label;
+            btn.classList.add("copied");
+            setTimeout(function () {
+              btn.textContent = prev;
+              btn.classList.remove("copied");
+            }, 1600);
+          };
+          var text = cmds.innerText.trim();
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(function () { done("Copied ✓"); }, function () { done("Press ⌘C"); });
+          } else {
+            done("Press ⌘C");
+          }
+        });
+      })();
+    </script>
   </body>
 </html>
