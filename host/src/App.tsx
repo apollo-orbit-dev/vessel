@@ -174,6 +174,7 @@ export function App() {
   const [toast, setToast] = useState<string | null>(null);
   const [permissionReq, setPermissionReq] = useState<PermissionReq | null>(null);
   const [offlineReady, setOfflineReady] = useState(false);
+  const [updateReady, setUpdateReady] = useState(false);
 
   const autosave = useRef<Autosave | null>(null);
   const worker = useRef<WorkerRuntime | null>(null);
@@ -468,7 +469,13 @@ export function App() {
       setOfflineReady(sw.controller != null);
     };
 
-    const onCtrl = () => warmShell();
+    // If a controller already exists, a later controllerchange means a NEW
+    // service worker took over → a new host version is ready to load.
+    const hadController = sw.controller != null;
+    const onCtrl = () => {
+      warmShell();
+      if (hadController) setUpdateReady(true);
+    };
     sw.addEventListener("controllerchange", onCtrl);
 
     // Only cache in production builds — on the dev server a caching SW would
@@ -593,6 +600,36 @@ export function App() {
         />
       )}
       {toast && <Toast message={toast} />}
+      {updateReady && (
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            bottom: 18,
+            transform: "translateX(-50%)",
+            zIndex: 80,
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            padding: "9px 10px 9px 16px",
+            background: t.toolBg,
+            border: `1px solid ${t.hairStrong}`,
+            borderRadius: 10,
+            boxShadow: t.winShadow,
+            font: `13px ${UIFONT}`,
+            color: t.text,
+          }}
+        >
+          <span>A new version of Vessel is available.</span>
+          <Button
+            kind="primary"
+            onClick={() => window.location.reload()}
+            style={{ height: 30, padding: "0 14px", borderRadius: 7, font: `500 13px ${UIFONT}` }}
+          >
+            Reload
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
