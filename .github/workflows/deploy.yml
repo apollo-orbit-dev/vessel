@@ -35,6 +35,7 @@ jobs:
           mkdir -p _site/app
           cp -r site/. _site/
           cp -r host/dist/. _site/app/
+          cp -r skills _site/skills
           echo "getvessel.dev" > _site/CNAME
           touch _site/.nojekyll
       - uses: actions/upload-pages-artifact@v3

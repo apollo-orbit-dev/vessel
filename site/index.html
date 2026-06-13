@@ -123,6 +123,26 @@
         </div>
       </section>
 
+      <section id="build-with-ai" class="selfhost">
+        <p class="eyebrow center">Build one with your AI</p>
+        <div class="selfhost-inner">
+          <p class="selfhost-lede">
+            Authoring a <code>.vessel</code> has a few non-obvious rules — an async-only Python backend, a single-file
+            UI, declared packages. Hand your AI agent the Vessel authoring skill and it produces valid bundles, correct
+            manifest and all.
+          </p>
+          <div class="codeblock">
+            <button class="copy" type="button" aria-label="Copy">Copy</button>
+            <pre><code>Follow the Vessel authoring skill, then build me a .vessel tool:
+https://getvessel.dev/skills/vessel-author/SKILL.md</code></pre>
+          </div>
+          <p class="selfhost-foot">
+            Paste that into Claude or your agent. Or
+            <a href="https://github.com/apollo-orbit-dev/vessel/blob/main/skills/vessel-author/SKILL.md">read the skill</a>.
+          </p>
+        </div>
+      </section>
+
       <section id="run-it-yourself" class="selfhost">
         <p class="eyebrow center">Run it yourself</p>
         <div class="selfhost-inner">
@@ -176,28 +196,27 @@ npm run preview -w @vessel/host</code></pre>
     </footer>
 
     <script>
-      (function () {
-        var btn = document.getElementById("copyCmds");
-        var cmds = document.getElementById("cmds");
-        if (!btn || !cmds) return;
+      // Copy buttons: each .copy copies the <pre> text in its .codeblock.
+      document.querySelectorAll(".copy").forEach(function (btn) {
         btn.addEventListener("click", function () {
+          var pre = btn.parentElement.querySelector("pre");
+          if (!pre) return;
           var done = function (label) {
-            var prev = "Copy";
             btn.textContent = label;
             btn.classList.add("copied");
             setTimeout(function () {
-              btn.textContent = prev;
+              btn.textContent = "Copy";
               btn.classList.remove("copied");
             }, 1600);
           };
-          var text = cmds.innerText.trim();
+          var text = pre.innerText.trim();
           if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(text).then(function () { done("Copied ✓"); }, function () { done("Press ⌘C"); });
           } else {
             done("Press ⌘C");
           }
         });
-      })();
+      });
     </script>
   </body>
 </html>
