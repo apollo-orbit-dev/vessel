@@ -9,6 +9,9 @@ Install the host once (as a PWA); after that any `.vessel` opens, runs, and save
 its data back to the same file — no server, no accounts, everything in the
 browser.
 
+**Try it:** [getvessel.dev](https://getvessel.dev) — the host installs from
+[getvessel.dev/app/](https://getvessel.dev/app/).
+
 ## Quick start
 See [`docs/setup.md`](docs/setup.md).
 
