@@ -1,18 +1,18 @@
 {
-  "name": "Vessel Host (spike)",
+  "name": "Vessel Host",
   "short_name": "Vessel",
   "description": "Opens .vessel tool bundles.",
-  "start_url": "/",
-  "scope": "/",
+  "start_url": "/app/",
+  "scope": "/app/",
   "display": "standalone",
   "background_color": "#26282b",
   "theme_color": "#26282b",
   "icons": [
-    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+    { "src": "/app/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
   ],
   "file_handlers": [
     {
-      "action": "/",
+      "action": "/app/",
       "accept": { "application/vessel": [".vessel"] },
       "launch_type": "single-client"
     }

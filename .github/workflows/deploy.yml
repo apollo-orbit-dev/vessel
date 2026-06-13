@@ -1,0 +1,53 @@
+# Build the landing page + host PWA and deploy to GitHub Pages (getvessel.dev).
+# Layout: landing at /, host PWA at /app/. Runs only in the public repo — the
+# guard skips it in vessel-private (where the same file is published but Pages
+# is not configured).
+name: Deploy to Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.repository == 'apollo-orbit-dev/vessel'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build -w @vessel/host
+      - name: Assemble Pages artifact (landing at /, host at /app/)
+        run: |
+          mkdir -p _site/app
+          cp -r site/. _site/
+          cp -r host/dist/. _site/app/
+          echo "getvessel.dev" > _site/CNAME
+          touch _site/.nojekyll
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    if: github.repository == 'apollo-orbit-dev/vessel'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

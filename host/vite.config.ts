@@ -3,6 +3,9 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [react()],
+  // Served from a sub-path on the canonical origin (getvessel.dev/app/); the
+  // landing page owns the root. Affects built asset URLs + the SW/manifest scope.
+  base: "/app/",
   // Pyodide is loaded from CDN at runtime, not bundled.
   test: {
     environment: "node",

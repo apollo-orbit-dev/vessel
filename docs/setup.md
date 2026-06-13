@@ -26,7 +26,7 @@ npm install     # at the repo ROOT — installs all workspaces
 ## Commands (run from `host/`, or with `-w @vessel/host` from root)
 | Command | What it does |
 |---|---|
-| `npm run dev` | Start the Vite dev server for the host PWA (default http://localhost:5173). |
+| `npm run dev` | Start the Vite dev server for the host PWA. The host is based at `/app/`, so it serves at http://localhost:5173/app/ (Vite prints the URL). |
 | `npm run build` | Production build of the host into `host/dist/`. |
 | `npm run preview` | Serve the production build (needed to exercise the offline service worker; the SW is disabled in dev). |
 | `npm run build:bundle` | Assemble `examples/notes/` into `tests/fixtures/notes.vessel`. |

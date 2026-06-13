@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
-const URL = process.env.URL || "http://localhost:5173/";
+const URL = process.env.URL || "http://localhost:5173/app/"; // host is based at /app/
 const HERE = dirname(fileURLToPath(import.meta.url)); // host/scripts
 const FIXTURE = process.env.FIXTURE || resolve(HERE, "../../tests/fixtures/notes.vessel");
 

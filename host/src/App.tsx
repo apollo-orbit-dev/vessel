@@ -408,7 +408,7 @@ export function App() {
     // Re-fetch the app shell so it's in the cache (the first load happened
     // before the SW took control, so those responses weren't cached).
     const warmShell = () => {
-      const urls = new Set<string>(["/"]);
+      const urls = new Set<string>([import.meta.env.BASE_URL]);
       document.querySelectorAll<HTMLScriptElement | HTMLLinkElement>("script[src], link[href]").forEach((el) => {
         const u = (el as HTMLScriptElement).src || (el as HTMLLinkElement).href;
         if (u && u.startsWith(location.origin)) urls.add(u);
@@ -423,7 +423,7 @@ export function App() {
     // Only cache in production builds — on the dev server a caching SW would
     // serve stale vite modules. In dev (or when the pref is off) ensure no SW.
     if (prefs.cache && import.meta.env.PROD) {
-      sw.register("/sw.js").then(() => {
+      sw.register(`${import.meta.env.BASE_URL}sw.js`, { scope: import.meta.env.BASE_URL }).then(() => {
         if (sw.controller) warmShell();
       }).catch(() => {});
     } else {
