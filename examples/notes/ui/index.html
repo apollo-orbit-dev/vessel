@@ -4,48 +4,180 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Notes</title>
-    <!-- No colors here — the Vessel theme styles plain semantic HTML. This style
-         block is layout only. Toggle light/dark or switch themes in the host. -->
+    <!-- Layout only — all colors come from the Vessel theme (--vessel-* tokens
+         + base component styles injected by the host). Toggle light/dark or the
+         theme in the host and this UI follows. -->
     <style>
-      body { display: flex; flex-direction: column; gap: 12px; max-width: 560px; }
-      textarea { min-height: 220px; width: 100%; }
-      .row { display: flex; gap: 10px; align-items: center; }
+      html, body { height: 100%; }
+      body { margin: 0; padding: 0; }
+      .app { display: flex; height: 100vh; }
+      .sidebar {
+        width: 240px; flex: 0 0 240px; display: flex; flex-direction: column;
+        background: var(--vessel-surface); border-right: 1px solid var(--vessel-border);
+        overflow-y: auto;
+      }
+      .sidebar-head {
+        display: flex; align-items: center; gap: 8px;
+        padding: 12px 14px; border-bottom: 1px solid var(--vessel-border);
+      }
+      .sidebar-head strong { flex: 1; font-size: 14px; }
+      .nb-name {
+        display: flex; align-items: center; gap: 6px; padding: 12px 14px 4px;
+        font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
+        color: var(--vessel-text-muted);
+      }
+      .nb-name span { flex: 1; }
+      .note-item {
+        display: block; width: 100%; text-align: left; padding: 7px 14px;
+        border: none; border-left: 2px solid transparent; background: transparent;
+        color: var(--vessel-text); cursor: pointer; font: inherit;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      }
+      .note-item:hover { background: color-mix(in srgb, var(--vessel-text) 6%, transparent); }
+      .note-item.active {
+        background: color-mix(in srgb, var(--vessel-accent) 13%, transparent);
+        border-left-color: var(--vessel-accent);
+      }
+      .iconbtn { padding: 2px 9px; }
+      .editor { flex: 1; display: flex; flex-direction: column; padding: 18px 22px; gap: 12px; overflow: auto; }
+      .editor.empty { align-items: center; justify-content: center; }
+      #title { font-size: 17px; font-weight: 600; }
+      #body { flex: 1; min-height: 240px; resize: none; }
+      .bar { display: flex; align-items: center; gap: 10px; }
+      .spacer { flex: 1; }
     </style>
   </head>
   <body>
-    <h1>Notes</h1>
-    <p class="vessel-muted">
-      An ordinary <code>fetch('/api/note')</code> UI backed by FastAPI + SQLite in Pyodide —
-      styled entirely by the Vessel theme.
-    </p>
-    <textarea id="note" placeholder="Type a note, then Save…"></textarea>
-    <div class="row">
-      <button id="save" class="vessel-primary">Save</button>
-      <span id="status" class="vessel-muted"></span>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="sidebar-head">
+          <strong>Notes</strong>
+          <button id="add-notebook" class="iconbtn">+ Notebook</button>
+        </div>
+        <div id="list"></div>
+      </aside>
+      <main class="editor empty" id="editor">
+        <span class="vessel-muted">Select or create a note.</span>
+      </main>
     </div>
-    <script>
-      const $note = document.getElementById("note");
-      const $save = document.getElementById("save");
-      const $status = document.getElementById("status");
 
-      async function load() {
-        const res = await fetch("/api/note");
-        const data = await res.json();
-        $note.value = data.body || "";
-        $status.textContent = "loaded";
+    <script>
+      const $list = document.getElementById("list");
+      const $editor = document.getElementById("editor");
+      let notebooks = [];
+      let current = null; // selected note id
+
+      const j = (r) => r.json();
+
+      async function refreshSidebar() {
+        notebooks = await fetch("/api/notebooks").then(j);
+        renderList();
       }
 
-      $save.addEventListener("click", async () => {
-        $status.textContent = "saving…";
-        const res = await fetch("/api/note", {
+      function firstNoteId() {
+        for (const nb of notebooks) if (nb.notes.length) return nb.notes[0].id;
+        return null;
+      }
+
+      function renderList() {
+        $list.innerHTML = "";
+        for (const nb of notebooks) {
+          const head = document.createElement("div");
+          head.className = "nb-name";
+          const name = document.createElement("span");
+          name.textContent = nb.name;
+          const add = document.createElement("button");
+          add.className = "iconbtn";
+          add.textContent = "+";
+          add.title = "New note in " + nb.name;
+          add.onclick = () => newNote(nb.id);
+          head.append(name, add);
+          $list.append(head);
+          for (const note of nb.notes) {
+            const b = document.createElement("button");
+            b.className = "note-item" + (note.id === current ? " active" : "");
+            b.textContent = note.title || "Untitled";
+            b.onclick = () => openNote(note.id);
+            $list.append(b);
+          }
+        }
+      }
+
+      async function openNote(id) {
+        const note = await fetch("/api/notes/" + id).then(j);
+        current = id;
+        renderEditor(note);
+        renderList();
+      }
+
+      function renderEditor(note) {
+        $editor.className = "editor";
+        $editor.innerHTML =
+          '<input id="title" />' +
+          '<textarea id="body" placeholder="Write…"></textarea>' +
+          '<div class="bar">' +
+          '<button id="save" class="vessel-primary">Save</button>' +
+          '<span id="status" class="vessel-muted"></span>' +
+          '<span class="spacer"></span>' +
+          '<button id="delete" class="vessel-danger">Delete</button>' +
+          "</div>";
+        const $title = document.getElementById("title");
+        const $body = document.getElementById("body");
+        const $status = document.getElementById("status");
+        $title.value = note.title;
+        $body.value = note.body;
+        document.getElementById("save").onclick = async () => {
+          $status.textContent = "saving…";
+          const res = await fetch("/api/notes/" + note.id, {
+            method: "PUT",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ title: $title.value, body: $body.value }),
+          });
+          $status.textContent = res.ok ? "saved to bundle" : "error: " + res.status;
+          await refreshSidebar(); // reflect a changed title in the sidebar
+        };
+        document.getElementById("delete").onclick = async () => {
+          await fetch("/api/notes/" + note.id, { method: "DELETE" });
+          current = null;
+          await refreshSidebar();
+          const next = firstNoteId();
+          if (next) openNote(next);
+          else renderEmpty();
+        };
+      }
+
+      function renderEmpty() {
+        current = null;
+        $editor.className = "editor empty";
+        $editor.innerHTML = '<span class="vessel-muted">Select or create a note.</span>';
+      }
+
+      async function newNote(notebookId) {
+        const note = await fetch("/api/notes", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ body: $note.value }),
-        });
-        $status.textContent = res.ok ? "saved to bundle" : "error: " + res.status;
-      });
+          body: JSON.stringify({ notebook_id: notebookId, title: "Untitled" }),
+        }).then(j);
+        await refreshSidebar();
+        openNote(note.id);
+      }
 
-      load();
+      document.getElementById("add-notebook").onclick = async () => {
+        const name = prompt("Notebook name:");
+        if (!name) return;
+        await fetch("/api/notebooks", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ name }),
+        });
+        await refreshSidebar();
+      };
+
+      (async () => {
+        await refreshSidebar();
+        const first = firstNoteId();
+        if (first) openNote(first);
+      })();
     </script>
   </body>
 </html>

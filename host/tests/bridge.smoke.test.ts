@@ -15,45 +15,47 @@ async function boot(): Promise<PyodideLike> {
 }
 
 describe("fetch->ASGI bridge (FastAPI bundle)", () => {
-  it("reads, writes, and round-trips a note through SQLite", async () => {
+  it("lists notebooks, updates a note, and round-trips through SQLite", async () => {
     const bundle = readBundle(buildBundle());
     expect(bundle.manifest.name).toBe("Notes");
 
     const runtime = await createRuntime(await boot(), bundle);
 
-    const initial = await runtime.dispatch({ method: "GET", path: "/api/note", headers: {}, body: null });
-    expect(initial.status).toBe(200);
-    expect(JSON.parse(initial.body)).toEqual({ body: "" });
+    // Seeded notebooks + notes come back grouped for the sidebar.
+    const list = await runtime.dispatch({ method: "GET", path: "/api/notebooks", headers: {}, body: null });
+    expect(list.status).toBe(200);
+    const notebooks = JSON.parse(list.body);
+    expect(notebooks.length).toBeGreaterThanOrEqual(2);
+    const noteId = notebooks[0].notes[0].id;
 
     const wrote = await runtime.dispatch({
-      method: "POST",
-      path: "/api/note",
+      method: "PUT",
+      path: `/api/notes/${noteId}`,
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ body: "hello vessel" }),
+      body: JSON.stringify({ title: "Edited", body: "hello vessel" }),
     });
     expect(wrote.status).toBe(200);
-    expect(JSON.parse(wrote.body)).toMatchObject({ ok: true, body: "hello vessel" });
 
-    const readBack = await runtime.dispatch({ method: "GET", path: "/api/note", headers: {}, body: null });
-    expect(JSON.parse(readBack.body)).toEqual({ body: "hello vessel" });
+    const readBack = await runtime.dispatch({ method: "GET", path: `/api/notes/${noteId}`, headers: {}, body: null });
+    expect(JSON.parse(readBack.body)).toMatchObject({ title: "Edited", body: "hello vessel" });
 
     // Save -> reopen in a fresh runtime -> data persisted.
     const saved = await rebuildBundle(bundle, runtime);
     expect(saved.length).toBeGreaterThan(0);
     const reopened = readBundle(saved);
     const runtime2 = await createRuntime(await boot(), reopened);
-    const afterReopen = await runtime2.dispatch({ method: "GET", path: "/api/note", headers: {}, body: null });
-    expect(JSON.parse(afterReopen.body)).toEqual({ body: "hello vessel" });
+    const afterReopen = await runtime2.dispatch({ method: "GET", path: `/api/notes/${noteId}`, headers: {}, body: null });
+    expect(JSON.parse(afterReopen.body)).toMatchObject({ title: "Edited", body: "hello vessel" });
   });
 
-  it("rejects an invalid note body via FastAPI/Pydantic validation", async () => {
+  it("rejects an invalid note update via FastAPI/Pydantic validation", async () => {
     const bundle = readBundle(buildBundle());
     const runtime = await createRuntime(await boot(), bundle);
     const res = await runtime.dispatch({
-      method: "POST",
-      path: "/api/note",
+      method: "PUT",
+      path: "/api/notes/1",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ body: 123 }),
+      body: JSON.stringify({ title: 123, body: 456 }), // not strings
     });
     // FastAPI returns 422 Unprocessable Entity for request-model validation errors.
     expect(res.status).toBe(422);

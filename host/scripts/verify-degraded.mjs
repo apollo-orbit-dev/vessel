@@ -45,13 +45,13 @@ async function runFirefox() {
   ok(true, "file-input fallback accepted the .vessel (no showOpenFilePicker)");
 
   const frame = page.frameLocator("iframe");
-  await frame.locator("#note").waitFor({ timeout: 120000 });
-  ok(true, "bundle booted in Firefox: Pyodide worker + sandboxed iframe (#note present)");
+  await frame.locator("#body").waitFor({ timeout: 120000 });
+  ok(true, "bundle booted in Firefox: Pyodide worker + sandboxed iframe (note editor present)");
 
-  await frame.locator("#note").fill("hello from a real Firefox");
-  await frame.getByRole("button", { name: "Save" }).click();
+  await frame.locator("#body").fill("hello from a real Firefox");
+  await frame.getByRole("button", { name: "Save", exact: true }).click();
   await frame.getByText("saved to bundle").waitFor({ timeout: 30000 });
-  ok(true, "POST /api/note succeeded — FastAPI + SQLite in Pyodide on Firefox");
+  ok(true, "PUT /api/notes succeeded — FastAPI + SQLite in Pyodide on Firefox");
 
   const dlBtn = page.getByRole("button", { name: /download to save/i });
   await dlBtn.waitFor({ timeout: 10000 });
