@@ -1,0 +1,11 @@
+{
+  "name": "vessel-monorepo",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Vessel — host runtime, .vessel format, and authoring SDK.",
+  "workspaces": [
+    "core",
+    "host",
+    "sdk"
+  ]
+}

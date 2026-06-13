@@ -1,0 +1,27 @@
+{
+  "name": "@vessel/sdk",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Vessel authoring CLI — new / dev / build.",
+  "bin": {
+    "vessel": "dist/cli.mjs"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "prepare": "node build.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@vessel/core": "*",
+    "chokidar": "^4.0.0",
+    "pyodide": "0.29.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.25.12",
+    "typescript": "^5.6.0",
+    "vitest": "^4.0.0"
+  }
+}

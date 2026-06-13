@@ -1,0 +1,16 @@
+:root { color-scheme: light dark; }
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+body {
+  font-family: "Geist Sans", "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+#root { display: flex; flex-direction: column; }
+
+/* Boot screen indeterminate progress bar. */
+@keyframes vsl-indeterminate {
+  0% { left: -40%; }
+  100% { left: 100%; }
+}
+.vsl-indeterminate { animation: vsl-indeterminate 1.15s ease-in-out infinite; }

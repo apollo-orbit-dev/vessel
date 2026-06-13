@@ -1,0 +1,97 @@
+# Setup
+
+> Updated each phase as the project gains setup steps. Covers the host dev
+> server, the example-bundle build, and the test suite.
+
+## Prerequisites
+- **Node** ≥ 20 (developed on Node 24). npm comes with it.
+- A **Chromium** browser (Chrome/Edge) for the full host experience — the File
+  Handling API, `launchQueue` writable handle, and PWA install are Chromium-only.
+  Firefox/Safari run in **degraded mode** (file-input open + download-to-save; see
+  the host UI's banner).
+- Network on first run (Pyodide core + the FastAPI wheels download once).
+
+No Python toolchain is needed to run a bundle — the backend runs inside Pyodide.
+
+## Repo layout (npm workspaces)
+- `core/` — `@vessel/core`: the format + runtime shared by host and SDK (manifest schema, zip-safety, bundle read/write, the Pyodide ASGI bridge harness).
+- `host/` — `@vessel/host`: the installable PWA.
+- `sdk/` — `@vessel/sdk`: the `vessel` CLI.
+
+## First-time setup
+```bash
+npm install     # at the repo ROOT — installs all workspaces
+```
+
+## Commands (run from `host/`, or with `-w @vessel/host` from root)
+| Command | What it does |
+|---|---|
+| `npm run dev` | Start the Vite dev server for the host PWA (default http://localhost:5173). |
+| `npm run build` | Production build of the host into `host/dist/`. |
+| `npm run preview` | Serve the production build (needed to exercise the offline service worker; the SW is disabled in dev). |
+| `npm run build:bundle` | Assemble `examples/notes/` into `tests/fixtures/notes.vessel`. |
+| `npm test` | Run the Vitest suite (unit + a smoke test that boots Pyodide in Node; `pretest` rebuilds the example bundle). |
+| `npm run typecheck` | `tsc --noEmit` over the host sources. |
+
+`npm test` requires network on first run (it micropip-installs FastAPI).
+
+**Cross-browser degradation check (manual, dev-only).** Playwright is not a
+committed dependency. To verify the degraded path on real Firefox:
+
+```
+cd host
+npm i -D --no-save playwright && npx playwright install firefox
+npm run dev                       # in another shell (http://localhost:5173)
+node scripts/verify-degraded.mjs  # drives Firefox through open → run → download-to-save
+```
+
+On Linux this needs Firefox's system libs (`sudo npx playwright install-deps`,
+or `apt-get install libasound2t64`).
+
+## Landing page (`site/`)
+
+A static marketing page (no build step). Preview it with any static server:
+
+```
+python3 -m http.server 8099 --directory site   # then open http://localhost:8099
+```
+
+Fonts load from Google Fonts (Geist) with a system-font fallback; the deployment
+origin is not yet chosen.
+
+## Running the host locally
+1. `cd host && npm run dev`
+2. Open the printed URL in **Chromium**.
+3. Click **Open .vessel…** and pick `tests/fixtures/notes.vessel` (build it first
+   with `npm run build:bundle` if it isn't there), or **drag-drop** it onto the window.
+   - The file picker / OS launch give a **writable handle** → promptless save.
+     Drag-drop (or any browser without the File System Access API) has no handle →
+     the host falls back to **download-to-save**.
+
+## SDK (the `vessel` CLI)
+Build the CLI, then author bundles (full guide: `docs/sdk.md`):
+```bash
+npm run build -w @vessel/sdk          # -> sdk/dist/cli.mjs
+node sdk/dist/cli.mjs new "My Tool"   # scaffold
+node sdk/dist/cli.mjs dev examples/notes   # dev server (host parity + reload)
+node sdk/dist/cli.mjs build examples/notes # -> notes.vessel
+```
+(Once published, this is just `vessel new` / `dev` / `build`.)
+
+## The example bundle
+- `examples/notes/` is a real **FastAPI** app (`app/main.py`, `async def`
+  routes — Pyodide has no threads, so sync routes are not supported) + stdlib
+  `sqlite3`, with a self-contained `ui/index.html`. `npm run build:bundle`
+  packages it into `tests/fixtures/notes.vessel`.
+
+## Trying the full OS-association loop (Chromium, manual)
+The promptless double-click → open → save loop needs the PWA installed:
+1. `npm run build` and serve `host/dist/` over **https or localhost** (e.g.
+   `npx vite preview`). File Handling requires a secure context.
+2. Install the PWA (address-bar install icon).
+3. Double-click a `.vessel` in the OS file manager → it opens in the host with a
+   writable handle; editing + Save writes back to the same file with no prompt.
+
+> Note: PWA install + file association + writable-handle save are verified by hand
+> in Chromium. The automated suite covers the loader, the bridge, and the
+> save→reopen round-trip at the data layer (see `host/tests/`).

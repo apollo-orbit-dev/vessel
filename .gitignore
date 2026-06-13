@@ -1,0 +1,30 @@
+# --- Secrets ---
+.env
+.env.*.local
+
+# --- Node / SDK / host build ---
+node_modules/
+dist/
+build/
+.vite/
+*.tsbuildinfo
+
+# --- Python / bundle authoring ---
+__pycache__/
+*.pyc
+.venv/
+.uv/
+
+# --- Pyodide / runtime cache ---
+.pyodide-cache/
+
+# --- Build artifacts ---
+# Generated bundles live in build output, not source.
+# Keep hand-authored example/fixture bundles under tests/fixtures/.
+*.vessel
+!tests/fixtures/**/*.vessel
+
+# --- OS / IDE ---
+.DS_Store
+Thumbs.db
+.idea/
