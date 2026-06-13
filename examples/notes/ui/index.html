@@ -4,24 +4,24 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Notes</title>
+    <!-- No colors here — the Vessel theme styles plain semantic HTML. This style
+         block is layout only. Toggle light/dark or switch themes in the host. -->
     <style>
-      :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
-      body { margin: 0; padding: 24px; display: flex; flex-direction: column; gap: 12px; }
-      h1 { font-size: 15px; font-weight: 600; margin: 0; }
-      p { margin: 0; font-size: 12px; opacity: 0.6; }
-      textarea { font: inherit; padding: 10px; min-height: 200px; resize: vertical; }
+      body { display: flex; flex-direction: column; gap: 12px; max-width: 560px; }
+      textarea { min-height: 220px; width: 100%; }
       .row { display: flex; gap: 10px; align-items: center; }
-      button { font: inherit; padding: 8px 16px; cursor: pointer; }
-      #status { font-size: 12px; opacity: 0.7; }
     </style>
   </head>
   <body>
     <h1>Notes</h1>
-    <p>An ordinary <code>fetch('/api/note')</code> UI backed by FastAPI + SQLite, running in Pyodide.</p>
+    <p class="vessel-muted">
+      An ordinary <code>fetch('/api/note')</code> UI backed by FastAPI + SQLite in Pyodide —
+      styled entirely by the Vessel theme.
+    </p>
     <textarea id="note" placeholder="Type a note, then Save…"></textarea>
     <div class="row">
-      <button id="save">Save</button>
-      <span id="status"></span>
+      <button id="save" class="vessel-primary">Save</button>
+      <span id="status" class="vessel-muted"></span>
     </div>
     <script>
       const $note = document.getElementById("note");
@@ -42,11 +42,7 @@
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ body: $note.value }),
         });
-        if (res.ok) {
-          $status.textContent = "saved to bundle";
-        } else {
-          $status.textContent = "error: " + res.status;
-        }
+        $status.textContent = res.ok ? "saved to bundle" : "error: " + res.status;
       });
 
       load();

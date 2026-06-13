@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { BUILTIN_THEMES } from "@vessel/core";
 import { useTheme, useAppearance, UIFONT, MONO } from "../theme";
 import { Button, Toggle, SegText } from "./primitives";
 import { IconClose } from "./icons";
@@ -7,6 +8,7 @@ export interface Prefs {
   cache: boolean;
   warnNet: boolean;
   multiWin: boolean;
+  theme: string; // active built-in bundle theme id
 }
 
 function PrefRow({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
@@ -34,10 +36,12 @@ const SECTION: React.CSSProperties = {
 export function Settings({
   prefs,
   onToggle,
+  onSetTheme,
   onClose,
 }: {
   prefs: Prefs;
-  onToggle: (key: keyof Prefs) => void;
+  onToggle: (key: "cache" | "warnNet" | "multiWin") => void;
+  onSetTheme: (id: string) => void;
   onClose: () => void;
 }) {
   const t = useTheme();
@@ -83,6 +87,15 @@ export function Settings({
                 { id: "system", label: "System" },
               ]}
             />
+            <div style={{ ...SECTION, color: t.textMuted, margin: "16px 0 10px" }}>Theme</div>
+            <SegText
+              value={prefs.theme}
+              onChange={onSetTheme}
+              options={BUILTIN_THEMES.map((th) => ({ id: th.id, label: th.label }))}
+            />
+            <div style={{ fontSize: 11.5, color: t.textMuted, marginTop: 8, lineHeight: 1.45 }}>
+              Applies to tools that use the Vessel theme. Light/dark follows Appearance.
+            </div>
           </div>
 
           <div style={{ marginTop: 14, marginBottom: 4 }}>

@@ -1,14 +1,19 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   readBundle,
   rebuildBundle,
   allowedOrigins,
   verifyBundle,
+  resolveBundleThemeCss,
+  bundleThemeVars,
+  parseBundleTheme,
   type BundleParts,
   type VesselRuntime,
   type VerifyResult,
+  type ThemeMode,
+  type BundleThemeOverride,
 } from "@vessel/core";
-import { mountBundleUi } from "./iframe";
+import { mountBundleUi, type MountHandle } from "./iframe";
 import { writeToHandle } from "./save";
 import { downloadBundle } from "./download";
 import { detectCapabilities, isFullExperience } from "./capabilities";
@@ -39,6 +44,9 @@ interface Session {
   allowedOrigins: string[];
   trust: Trust;
   publisher?: string;
+  /** Validated bundle-declared theme override (if any) + base-styles opt-out. */
+  bundleTheme?: BundleThemeOverride;
+  baseStyles: boolean;
 }
 
 interface PermissionReq {
@@ -79,7 +87,7 @@ function pickFileFallback(): Promise<File | null> {
 }
 
 const PREFS_KEY = "vessel.prefs";
-const DEFAULT_PREFS: Prefs = { cache: true, warnNet: true, multiWin: true };
+const DEFAULT_PREFS: Prefs = { cache: true, warnNet: true, multiWin: true, theme: "default" };
 
 function shortError(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -110,17 +118,39 @@ function DownloadSaveSlot({ state, onSave }: { state: AutosaveState; onSave: () 
   );
 }
 
-function ToolView({ session, onMutation }: { session: Session; onMutation: () => void }) {
+function ToolView({
+  session,
+  onMutation,
+  themeCss,
+  themeVars,
+  bgColor,
+}: {
+  session: Session;
+  onMutation: () => void;
+  themeCss: string;
+  themeVars: Record<string, string>;
+  bgColor: string;
+}) {
   const stageRef = useRef<HTMLDivElement>(null);
+  const handle = useRef<MountHandle | null>(null);
   useEffect(() => {
-    const teardown = mountBundleUi(stageRef.current!, session.html, session.runtime, {
+    const h = mountBundleUi(stageRef.current!, session.html, session.runtime, {
       allowedOrigins: session.allowedOrigins,
+      themeCss,
+      bgColor,
       afterDispatch: (req, res) => {
         if (req.method !== "GET" && res.status < 400) onMutation();
       },
     });
-    return () => teardown();
+    handle.current = h;
+    return () => h.teardown();
+    // themeCss/bgColor are read at mount; later theme changes are pushed live by
+    // the next effect, so they're intentionally out of deps (would remount).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, onMutation]);
+  useEffect(() => {
+    handle.current?.pushTheme(themeVars);
+  }, [themeVars]);
   return <Sandbox stageRef={stageRef} />;
 }
 
@@ -244,6 +274,17 @@ export function App() {
             });
         setSavedState("idle");
 
+        // Author-declared theme (validated as token values; ignored on failure).
+        let bundleTheme: BundleThemeOverride | undefined;
+        const themePath = bundle.manifest.theme;
+        if (themePath && bundle.files[themePath]) {
+          try {
+            bundleTheme = parseBundleTheme(bundle.files[themePath]);
+          } catch (e) {
+            showToast(`Theme ignored: ${shortError(e)}`);
+          }
+        }
+
         const html = new TextDecoder().decode(bundle.files[bundle.manifest.ui]);
         setSession({
           bundle,
@@ -254,6 +295,8 @@ export function App() {
           allowedOrigins: effectiveOrigins,
           trust: trustOf(verify),
           publisher: verify.publisher,
+          bundleTheme,
+          baseStyles: bundle.manifest.base_styles !== false,
         });
         setScreen("tool");
 
@@ -323,9 +366,17 @@ export function App() {
     setScreen("launcher");
   }, []);
 
-  const togglePref = useCallback((key: keyof Prefs) => {
+  const togglePref = useCallback((key: "cache" | "warnNet" | "multiWin") => {
     setPrefs((p) => {
       const next = { ...p, [key]: !p[key] };
+      localStorage.setItem(PREFS_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const setBundleTheme = useCallback((theme: string) => {
+    setPrefs((p) => {
+      const next = { ...p, theme };
       localStorage.setItem(PREFS_KEY, JSON.stringify(next));
       return next;
     });
@@ -440,6 +491,22 @@ export function App() {
     if (file) void file.arrayBuffer().then((b) => openBytes(new Uint8Array(b), null, file.name));
   }
 
+  // Active bundle theme in the host's light/dark mode. A bundle-declared theme
+  // (merged over Default) wins for that tool; otherwise the user's selected
+  // built-in. base_styles:false drops the base component stylesheet.
+  const bundleMode: ThemeMode = t.name;
+  const themeBase = session?.bundleTheme ? "default" : prefs.theme;
+  const themeOverrides = session?.bundleTheme?.[bundleMode];
+  const includeBase = session ? session.baseStyles : true;
+  const bundleThemeCss = useMemo(
+    () => resolveBundleThemeCss(themeBase, bundleMode, themeOverrides, includeBase),
+    [themeBase, bundleMode, themeOverrides, includeBase],
+  );
+  const bundleVars = useMemo(
+    () => bundleThemeVars(themeBase, bundleMode, themeOverrides),
+    [themeBase, bundleMode, themeOverrides],
+  );
+
   if (screen === "boot") return <BootBody note={bootNote} />;
 
   // Recents persist a reopenable file handle; degraded browsers have none, so
@@ -502,10 +569,20 @@ export function App() {
           offlineReady={offlineReady}
         />
       ) : (
-        session && <ToolView session={session} onMutation={onMutation} />
+        session && (
+          <ToolView
+            session={session}
+            onMutation={onMutation}
+            themeCss={bundleThemeCss}
+            themeVars={bundleVars}
+            bgColor={bundleVars["--vessel-bg"]}
+          />
+        )
       )}
 
-      {settingsOpen && <Settings prefs={prefs} onToggle={togglePref} onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && (
+        <Settings prefs={prefs} onToggle={togglePref} onSetTheme={setBundleTheme} onClose={() => setSettingsOpen(false)} />
+      )}
       {permissionReq && (
         <PermissionModal
           name={permissionReq.name}

@@ -19,3 +19,14 @@ export {
   type KeyPairB64,
   type VerifyResult,
 } from "./sign";
+export {
+  BUILTIN_THEMES,
+  getTheme,
+  bundleThemeVars,
+  resolveBundleThemeCss,
+  parseBundleTheme,
+  type ThemeMode,
+  type ThemeTokens,
+  type VesselTheme,
+  type BundleThemeOverride,
+} from "./theming";

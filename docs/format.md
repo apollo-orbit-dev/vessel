@@ -51,7 +51,9 @@ Every path inside a bundle (manifest `ui`/`data`, and every ZIP entry) must be a
     "print": true                             // optional
   },
   "publisher": "BA Engineers LLC",            // optional: ≤200 chars
-  "signed_by": "ed25519:…"                    // optional: ≤512 chars
+  "signed_by": "ed25519:…",                   // optional: ≤512 chars
+  "theme": "theme.json",                      // optional: path to a token-value theme (see Theming)
+  "base_styles": true                         // optional: default true; false = no base component CSS
 }
 ```
 
@@ -75,6 +77,30 @@ The backend runs in Pyodide (CPython on WASM), which shapes what authors can do:
   incl. the `pydantic-core` wasm wheel). If a transitive Pyodide-provided
   dependency isn't pulled automatically, list it explicitly in `packages`.
 - **Request/response only** — no WebSockets or streaming responses in v1.
+
+## Theming
+The host injects a standard set of **`--vessel-*` CSS variables** plus a
+**classless base stylesheet** into every bundle UI, themed to the user's selected
+theme and light/dark mode — and **re-themes live** when the user toggles. So plain
+semantic HTML (`button`, `input`, `select`, `textarea`, headings, `table`, `code`…)
+is styled automatically; an author writes no colors and the tool matches the host.
+
+Tokens: `--vessel-bg`, `--vessel-surface`, `--vessel-field`, `--vessel-text`,
+`--vessel-text-muted`, `--vessel-border`, `--vessel-accent`, `--vessel-accent-text`,
+`--vessel-ok`, `--vessel-danger`, `--vessel-radius`, `--vessel-font`,
+`--vessel-font-mono`. Utility classes: `.vessel-primary` (accent button),
+`.vessel-danger`, `.vessel-card`, `.vessel-muted`. Style with `var(--vessel-…)` for
+custom elements; override the base styles with your own CSS (it wins by order).
+
+**Author theme (optional).** Set `manifest.theme` to a `theme.json` in the bundle:
+```json
+{ "light": { "accent": "#7c3aed" }, "dark": { "accent": "#a78bfa" } }
+```
+It is **partial** (merged over the Default theme) and applies to your tool while
+**light/dark stays user-controlled**. Values are validated as **token values**
+(colors / lengths / font stacks) — not arbitrary CSS — so a theme can't inject
+styles or load remote content; an invalid value makes the host ignore the theme.
+Set `base_styles: false` to drop the base component styles (you supply your own).
 
 ## Signing (optional, Ed25519)
 A bundle may be signed: `manifest.signed_by` holds `ed25519:<base64 public key>`

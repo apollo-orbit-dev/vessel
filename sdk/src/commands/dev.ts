@@ -6,6 +6,7 @@ import {
   writeBundle,
   readBundle,
   createRuntime,
+  resolveBundleThemeCss,
   type PyodideLike,
   type VesselRuntime,
 } from "@vessel/core";
@@ -34,6 +35,21 @@ export function injectReloadScript(html: string): string {
   return html.includes("</body>")
     ? html.replace("</body>", RELOAD_SNIPPET + "</body>")
     : html + RELOAD_SNIPPET;
+}
+
+// Dev parity: inject the default theme (light) so authors see the same
+// `--vessel-*` tokens + base component styles the host provides. No live toggle
+// in dev (there's no host chrome here).
+const THEME_STYLE = `<style>${resolveBundleThemeCss("default", "light")}</style>`;
+
+/** Inject the default theme stylesheet after <head> (or prepend). Pure. */
+export function injectThemeStyle(html: string): string {
+  const head = html.match(/<head[^>]*>/i);
+  if (head?.index !== undefined) {
+    const at = head.index + head[0].length;
+    return html.slice(0, at) + THEME_STYLE + html.slice(at);
+  }
+  return THEME_STYLE + html;
 }
 
 export interface DevOptions {
@@ -103,7 +119,11 @@ export async function dev(opts: DevOptions): Promise<void> {
     }
     const ct = contentType(file);
     res.writeHead(200, { "content-type": ct });
-    res.end(ct === "text/html" ? injectReloadScript(readFileSync(file, "utf8")) : readFileSync(file));
+    res.end(
+      ct === "text/html"
+        ? injectReloadScript(injectThemeStyle(readFileSync(file, "utf8")))
+        : readFileSync(file),
+    );
   });
 
   await new Promise<void>((r) => server.listen(port, r));

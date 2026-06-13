@@ -51,6 +51,8 @@ export const manifestV1 = z.object({
     .optional(),
   publisher: z.string().max(200).optional(),
   signed_by: z.string().max(512).optional(),
+  theme: bundlePath.optional(), // path to a theme.json (token values)
+  base_styles: z.boolean().optional(), // default true; false opts out of base component styles
 });
 
 export type Manifest = z.infer<typeof manifestV1>;

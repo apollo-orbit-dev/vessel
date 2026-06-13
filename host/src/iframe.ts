@@ -51,30 +51,49 @@ export function injectIntoHead(html: string, inject: string): string {
   return inject + html;
 }
 
+// Injected listener: applies `--vessel-*` token updates pushed from the host
+// (on a light/dark or theme toggle). Only accepts messages from the parent;
+// it only mutates the iframe's own CSS variables, so there's no trust impact.
+const THEME_LISTENER = `<script>(function(){window.addEventListener("message",function(e){if(e.source!==window.parent)return;var d=e.data;if(!d||d.type!=="vessel:theme"||!d.vars)return;var s=document.documentElement.style;for(var k in d.vars)s.setProperty(k,d.vars[k]);});})();</script>`;
+
+export interface MountHandle {
+  /** Detach the bridge and remove the iframe. */
+  teardown(): void;
+  /** Live-update the bundle's `--vessel-*` variables (no remount). */
+  pushTheme(vars: Record<string, string>): void;
+}
+
 /**
- * Render the bundle's UI in a sandboxed iframe with a strict CSP and the bridge
- * wired to `runtime`. Returns a teardown function.
+ * Render the bundle's UI in a sandboxed iframe with a strict CSP, the bridge
+ * wired to `runtime`, and (optionally) the active theme injected. Returns a
+ * handle to tear down and to push live theme updates.
  */
 export function mountBundleUi(
   container: HTMLElement,
   html: string,
   runtime: VesselRuntime,
-  opts: BridgeOptions & { allowedOrigins?: string[] } = {},
-): () => void {
+  opts: BridgeOptions & { allowedOrigins?: string[]; themeCss?: string; bgColor?: string } = {},
+): MountHandle {
   const token = newBridgeToken();
   const cspMeta = `<meta http-equiv="Content-Security-Policy" content="${bundleCsp(opts.allowedOrigins ?? [])}">`;
-  const doc = injectIntoHead(html, cspMeta + bridgeShim(token));
+  const themeBlock = opts.themeCss ? `<style id="vessel-theme">${opts.themeCss}</style>${THEME_LISTENER}` : "";
+  const doc = injectIntoHead(html, cspMeta + themeBlock + bridgeShim(token));
 
   const iframe = document.createElement("iframe");
   iframe.setAttribute("sandbox", "allow-scripts"); // opaque origin, no host access
-  iframe.style.cssText = "border:0;width:100%;height:100%;display:block;background:#fff";
+  iframe.style.cssText = `border:0;width:100%;height:100%;display:block;background:${opts.bgColor ?? "#fff"}`;
   iframe.srcdoc = doc;
 
   const detach = attachBridge(iframe, runtime, token, opts);
   container.replaceChildren(iframe);
 
-  return () => {
-    detach();
-    iframe.remove();
+  return {
+    teardown() {
+      detach();
+      iframe.remove();
+    },
+    pushTheme(vars) {
+      iframe.contentWindow?.postMessage({ type: "vessel:theme", vars }, "*");
+    },
   };
 }

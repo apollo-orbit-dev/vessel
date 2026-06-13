@@ -49,6 +49,21 @@ Paths must be **safe relative paths**: no leading `/`, no `..`, no backslashes; 
 ## The UI ↔ backend bridge
 The UI calls `fetch('/api/...')`; the host intercepts these and dispatches them **in-process** into the ASGI app (no real network is used). So define ordinary FastAPI routes (e.g. `GET /api/note`) and call them from the UI with `fetch('/api/note')`. Routes that don't start with the API path are still your app's — there's no host-injected prefix to account for.
 
+## Theming (free — don't hardcode colors)
+The host injects `--vessel-*` CSS variables + a classless base stylesheet, themed
+to the user's selected theme and light/dark mode and **re-themed live** on toggle.
+So write **plain semantic HTML** — `button`, `input`, `select`, `textarea`,
+headings, `table`, `code` are styled automatically and match the host. Do **not**
+hardcode colors; rely on the base styles or use `var(--vessel-…)`. Tokens:
+`--vessel-bg`, `--vessel-surface`, `--vessel-field`, `--vessel-text`,
+`--vessel-text-muted`, `--vessel-border`, `--vessel-accent`, `--vessel-accent-text`,
+`--vessel-ok`, `--vessel-danger`, `--vessel-radius`, `--vessel-font`,
+`--vessel-font-mono`. Utility classes: `.vessel-primary` (accent button),
+`.vessel-danger`, `.vessel-card`, `.vessel-muted`. Optional brand theme: ship a
+`theme.json` (`{ "light": {…}, "dark": {…} }` — partial token values) and set
+`manifest.theme` to its path; light/dark stays user-controlled. `base_styles:
+false` opts out of the base styles.
+
 ## Complete minimal example
 **`manifest.json`**
 ```json
@@ -111,7 +126,7 @@ async def save_note(note: Note):
   <head><meta charset="utf-8" /><title>Notes</title></head>
   <body>
     <textarea id="note" rows="10" cols="40"></textarea>
-    <button id="save">Save</button>
+    <button id="save" class="vessel-primary">Save</button>
     <script>
       const note = document.getElementById("note");
       fetch("/api/note").then((r) => r.json()).then((d) => (note.value = d.body));
