@@ -1,9 +1,13 @@
 # Vessel
 
-An installable runtime **host** that opens self-contained `.vessel` web-tool
-bundles — a React UI + a Python/FastAPI backend + a SQLite database, with the
-data living *inside the file*. The Excel model (an installed engine + a portable
-zipped document) for modern web tools.
+**The artifact format for AI-generated software.** Describe a tool, and the model
+hands you one self-contained file — UI, logic, and data inside — that runs the
+instant you open it, with nothing to deploy or operate.
+
+Concretely: an installable runtime **host** that opens self-contained `.vessel`
+web-tool bundles — a React UI + a Python/FastAPI backend + a SQLite database, with
+the data living *inside the file*. The Excel model (an installed engine + a
+portable zipped document) for modern web tools.
 
 Install the host once (as a PWA); after that any `.vessel` opens, runs, and saves
 its data back to the same file — no server, no accounts, everything in the
