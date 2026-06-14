@@ -1,24 +1,52 @@
 {
-  "name": "@vessel/sdk",
-  "version": "0.0.0",
-  "private": true,
+  "name": "vessel-cli",
+  "version": "0.1.0",
   "type": "module",
-  "description": "Vessel authoring CLI — new / dev / build.",
+  "description": "Author, develop, package, and inspect Vessel (.vessel) tool bundles — a single file carrying a FastAPI/Python backend (run in Pyodide), a self-contained UI, and a SQLite database.",
+  "keywords": [
+    "vessel",
+    ".vessel",
+    "pyodide",
+    "fastapi",
+    "sqlite",
+    "local-first",
+    "cli",
+    "bundle"
+  ],
+  "license": "Apache-2.0",
+  "homepage": "https://getvessel.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/apollo-orbit-dev/vessel.git",
+    "directory": "sdk"
+  },
+  "bugs": {
+    "url": "https://github.com/apollo-orbit-dev/vessel/issues"
+  },
   "bin": {
     "vessel": "dist/cli.mjs"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
   },
   "scripts": {
     "build": "node build.mjs",
     "prepare": "node build.mjs",
+    "prepublishOnly": "node build.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@vessel/core": "*",
     "chokidar": "^4.0.0",
     "pyodide": "0.29.4"
   },
   "devDependencies": {
+    "@vessel/core": "*",
     "@types/node": "^22.0.0",
     "esbuild": "^0.25.12",
     "typescript": "^5.6.0",

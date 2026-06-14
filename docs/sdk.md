@@ -48,9 +48,14 @@ vessel build                # -> my-tool.vessel — open it in the Vessel host
 in the host." A backend reload re-reads the source, which resets the dev DB to
 the on-disk `data/store.sqlite`.
 
+## Install
+```bash
+npm install -g vessel-cli   # the package is `vessel-cli`; the command is `vessel`
+vessel --help
+```
+Or run from a monorepo clone: `node sdk/dist/cli.mjs <cmd>` after `npm run build -w vessel-cli`.
+
 ## Notes
-- Not yet published to npm (the publish name is pending). For now it runs from
-  the monorepo: `node sdk/dist/cli.mjs <cmd>` after `npm run build -w @vessel/sdk`.
 - Single-file UI inlining and Ed25519 signing (`vessel keygen` / `build --sign`)
   are implemented. Deferred: build-time package validation + wheel vendoring for
   offline bundles, and ES-module graph bundling (transitive *Python* deps already
