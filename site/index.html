@@ -11,7 +11,7 @@
     <meta property="og:title" content="Vessel" />
     <meta
       property="og:description"
-      content="The Excel model — an installed engine plus a portable zipped document — for real web-tech tools."
+      content="The spreadsheet model — an installed engine plus a portable zipped document — for real web-tech tools."
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -36,6 +36,7 @@
         <span>Vessel</span>
       </a>
       <nav class="nav">
+        <a href="#examples">Examples</a>
         <a href="#how">How it works</a>
         <a href="#safety">Safety</a>
         <a class="nav-gh" href="https://github.com/apollo-orbit-dev/vessel">GitHub ↗</a>
@@ -83,7 +84,7 @@
       </section>
 
       <section class="model">
-        <p class="eyebrow center">The Excel model, for web tech</p>
+        <p class="eyebrow center">The spreadsheet model, for web tech</p>
         <div class="model-grid">
           <div class="model-cell">
             <span class="num">01</span>
@@ -122,6 +123,99 @@
             <p>State lives in a real SQLite database — and that database travels <em>inside</em> the <code>.vessel</code>. The file is the document.</p>
           </article>
         </div>
+      </section>
+
+      <section id="examples" class="examples">
+        <p class="eyebrow center">Ten example tools</p>
+        <p class="examples-lede">
+          Real <code>.vessel</code> files — each a FastAPI + SQLite backend and a self-contained UI, with full
+          create / edit / delete. Download one and open it in the host.
+        </p>
+        <div class="examples-grid">
+          <a class="ex-card" href="/examples/budget.vessel" download>
+            <div class="ex-head"><h3>Budget</h3><span class="ex-badge unsigned">unsigned</span></div>
+            <p>Local-first money — transactions, categories, a trend + forecast chart.</p>
+            <span class="ex-dl">Download .vessel <span class="dl-i">↓</span></span>
+          </a>
+          <a class="ex-card" href="/examples/flashcards.vessel" download>
+            <div class="ex-head"><h3>Flashcards</h3><span class="ex-badge unsigned">unsigned</span></div>
+            <p>SM-2 spaced repetition — edit the deck, study, and rate.</p>
+            <span class="ex-dl">Download .vessel <span class="dl-i">↓</span></span>
+          </a>
+          <a class="ex-card" href="/examples/csv-explorer.vessel" download>
+            <div class="ex-head"><h3>CSV Explorer</h3><span class="ex-badge signed">signed · Tabula Labs</span></div>
+            <p>Real SQL filter/sort over thousands of rows; import your own CSV.</p>
+            <span class="ex-dl">Download .vessel <span class="dl-i">↓</span></span>
+          </a>
+          <a class="ex-card" href="/examples/invoice.vessel" download>
+            <div class="ex-head"><h3>Invoice</h3><span class="ex-badge signed">signed · Ledgerleaf</span></div>
+            <p>A fully editable invoice template with live totals and print-to-PDF.</p>
+            <span class="ex-dl">Download .vessel <span class="dl-i">↓</span></span>
+          </a>
+          <a class="ex-card" href="/examples/recipe-planner.vessel" download>
+            <div class="ex-head"><h3>Recipe Planner</h3><span class="ex-badge unsigned">unsigned</span></div>
+            <p>Recipes plus a weekly plan; a shopping list built from the plan.</p>
+            <span class="ex-dl">Download .vessel <span class="dl-i">↓</span></span>
+          </a>
+          <a class="ex-card" href="/examples/habits.vessel" download>
+            <div class="ex-head"><h3>Habits</h3><span class="ex-badge unsigned">unsigned</span></div>
+            <p>A 21-day habit grid with streaks you tick off day by day.</p>
+            <span class="ex-dl">Download .vessel <span class="dl-i">↓</span></span>
+          </a>
+          <a class="ex-card" href="/examples/crm.vessel" download>
+            <div class="ex-head"><h3>Personal CRM</h3><span class="ex-badge unsigned">unsigned</span></div>
+            <p>Contacts with a genuine “haven’t talked in 90 days” SQL query.</p>
+            <span class="ex-dl">Download .vessel <span class="dl-i">↓</span></span>
+          </a>
+          <a class="ex-card" href="/examples/job-tracker.vessel" download>
+            <div class="ex-head"><h3>Job Tracker</h3><span class="ex-badge unsigned">unsigned</span></div>
+            <p>A pipeline board: Applied → Screen → Onsite → Offer.</p>
+            <span class="ex-dl">Download .vessel <span class="dl-i">↓</span></span>
+          </a>
+          <a class="ex-card" href="/examples/workout.vessel" download>
+            <div class="ex-head"><h3>Workout Log</h3><span class="ex-badge unsigned">unsigned</span></div>
+            <p>Sets, PRs, reusable routines, and a training-volume chart.</p>
+            <span class="ex-dl">Download .vessel <span class="dl-i">↓</span></span>
+          </a>
+          <a class="ex-card" href="/examples/journal.vessel" download>
+            <div class="ex-head"><h3>Journal</h3><span class="ex-badge unsigned">unsigned</span></div>
+            <p>A dated journal with SQLite full-text search and match highlighting.</p>
+            <span class="ex-dl">Download .vessel <span class="dl-i">↓</span></span>
+          </a>
+        </div>
+        <p class="examples-foot">
+          Need the host first? <a href="/app/">Get it →</a> · or
+          <a href="https://github.com/apollo-orbit-dev/vessel/tree/main/examples">read the source</a>.
+        </p>
+      </section>
+
+      <section id="theming" class="demo">
+        <p class="eyebrow center">One theme system, every tool</p>
+        <p class="examples-lede">
+          Tools don't hardcode colors — they style with the host's <code>--vessel-*</code> tokens, so every tool follows
+          the host's light/dark and chosen theme automatically. Switch them here and watch it re-theme live:
+        </p>
+        <div class="demo-window">
+          <div class="demo-titlebar">
+            <span class="demo-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span class="demo-name">budget.vessel</span>
+            <span class="demo-controls">
+              <label class="demo-ctl">Theme
+                <select id="demo-theme" aria-label="Theme">
+                  <option value="default">Default</option>
+                  <option value="slate">Slate</option>
+                  <option value="warm">Warm</option>
+                </select>
+              </label>
+              <button id="demo-mode" type="button" class="demo-mode">☾ Dark</button>
+            </span>
+          </div>
+          <iframe id="demo-frame" class="demo-frame" title="Live theming preview"></iframe>
+        </div>
+        <p class="examples-foot">
+          The same tokens a bundle reads — see
+          <a href="https://github.com/apollo-orbit-dev/vessel/blob/main/skills/vessel-author/SKILL.md">the authoring skill</a>.
+        </p>
       </section>
 
       <section id="build-with-ai" class="selfhost">
@@ -218,6 +312,98 @@ npm run preview -w @vessel/host</code></pre>
           }
         });
       });
+    </script>
+
+    <script>
+      // Live theming demo. A representative Vessel tool UI rendered inside an
+      // iframe, re-themed by setting the real --vessel-* tokens on its :root —
+      // exactly how the host themes a bundle. Token values mirror
+      // core/src/theming.ts (BUILTIN_THEMES); kept in sync by hand.
+      (function () {
+        var frame = document.getElementById("demo-frame");
+        if (!frame) return;
+        var FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+        var MONO = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace';
+        var T = {
+          default: {
+            light: { bg: "#f5f5f4", surface: "#ffffff", field: "#ffffff", text: "#26282b", muted: "#8a8d92", border: "#dededa", accent: "oklch(0.55 0.09 230)", accentText: "#ffffff", ok: "oklch(0.58 0.07 155)", danger: "#e2453a", radius: "8px" },
+            dark: { bg: "#1c1e21", surface: "#26282b", field: "#2e3135", text: "#e7e8ea", muted: "#7e8186", border: "#3a3d42", accent: "oklch(0.70 0.10 230)", accentText: "#16181b", ok: "oklch(0.72 0.09 155)", danger: "#e2453a", radius: "8px" },
+          },
+          slate: {
+            light: { bg: "#f1f5f9", surface: "#ffffff", field: "#ffffff", text: "#0f172a", muted: "#64748b", border: "#e2e8f0", accent: "#2563eb", accentText: "#ffffff", ok: "#16a34a", danger: "#dc2626", radius: "8px" },
+            dark: { bg: "#0f172a", surface: "#1e293b", field: "#1e293b", text: "#e2e8f0", muted: "#94a3b8", border: "#334155", accent: "#60a5fa", accentText: "#0b1220", ok: "#4ade80", danger: "#f87171", radius: "8px" },
+          },
+          warm: {
+            light: { bg: "#faf6f0", surface: "#fffdf9", field: "#fffdf9", text: "#3b322a", muted: "#9b8e7e", border: "#e9ddcd", accent: "#b4530a", accentText: "#ffffff", ok: "#4d7c0f", danger: "#c2410c", radius: "10px" },
+            dark: { bg: "#211b15", surface: "#2a231b", field: "#2a231b", text: "#ece3d6", muted: "#a89a86", border: "#3d3328", accent: "#f59e0b", accentText: "#211b15", ok: "#a3e635", danger: "#fb923c", radius: "10px" },
+          },
+        };
+        function vars(t) {
+          return {
+            "--vessel-bg": t.bg, "--vessel-surface": t.surface, "--vessel-field": t.field,
+            "--vessel-text": t.text, "--vessel-text-muted": t.muted, "--vessel-border": t.border,
+            "--vessel-accent": t.accent, "--vessel-accent-text": t.accentText,
+            "--vessel-ok": t.ok, "--vessel-danger": t.danger, "--vessel-radius": t.radius,
+            "--vessel-font": FONT, "--vessel-font-mono": MONO,
+          };
+        }
+        // The classless base (mirrors core/src/theming.ts BASE_CSS) + a little
+        // layout for the mini budget tool.
+        var BASE =
+          "*,*::before,*::after{box-sizing:border-box}" +
+          "body{margin:0;padding:0;background:var(--vessel-bg);color:var(--vessel-text);font-family:var(--vessel-font);font-size:14px;line-height:1.5}" +
+          "input{font:inherit;color:var(--vessel-text);background:var(--vessel-field);border:1px solid var(--vessel-border);border-radius:var(--vessel-radius);padding:8px 10px}" +
+          "input::placeholder{color:var(--vessel-text-muted)}" +
+          "input:focus{outline:none;border-color:var(--vessel-accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--vessel-accent) 22%,transparent)}" +
+          "button{font:inherit;cursor:pointer;color:var(--vessel-text);background:var(--vessel-surface);border:1px solid var(--vessel-border);border-radius:var(--vessel-radius);padding:8px 14px}" +
+          ".vessel-primary{background:var(--vessel-accent);color:var(--vessel-accent-text);border-color:transparent}";
+        var DEMO =
+          ".th{display:flex;align-items:baseline;gap:8px;padding:12px 16px;background:var(--vessel-surface);border-bottom:1px solid var(--vessel-border)}" +
+          ".th b{font-size:15px}.body{padding:16px}" +
+          ".stats{display:flex;gap:30px;margin-bottom:18px}" +
+          ".big{font-family:var(--vessel-font-mono);font-size:28px;font-weight:600;letter-spacing:-0.02em}" +
+          ".lbl{font-size:12px;color:var(--vessel-text-muted);margin-top:2px}" +
+          ".cats{display:flex;flex-direction:column;gap:10px;margin-bottom:16px}" +
+          ".cat{display:grid;grid-template-columns:80px 1fr 64px;align-items:center;gap:10px;font-size:13px}" +
+          ".cat .num{font-family:var(--vessel-font-mono);text-align:right;color:var(--vessel-text-muted)}" +
+          ".track{height:7px;background:color-mix(in srgb,var(--vessel-text) 8%,transparent);border-radius:99px;overflow:hidden}" +
+          ".track i{display:block;height:100%;background:var(--vessel-accent);border-radius:99px}" +
+          ".row{display:flex;gap:8px}.row input{flex:1}.ok{color:var(--vessel-ok)}.muted{color:var(--vessel-text-muted)}";
+        var TOOL =
+          '<div class="th"><b>Budget</b><span class="muted" style="font-family:var(--vessel-font-mono);font-size:12px">· June 2026 · personal</span></div>' +
+          '<div class="body">' +
+          '<div class="stats"><div><div class="big">$2,148</div><div class="lbl">spent</div></div>' +
+          '<div><div class="big ok">$652</div><div class="lbl">left to spend</div></div></div>' +
+          '<div class="cats">' +
+          '<div class="cat"><span>Housing</span><div class="track"><i style="width:62%"></i></div><span class="num">$1,450</span></div>' +
+          '<div class="cat"><span>Food</span><div class="track"><i style="width:34%"></i></div><span class="num">$240</span></div>' +
+          '<div class="cat"><span>Transport</span><div class="track"><i style="width:22%"></i></div><span class="num">$130</span></div>' +
+          '<div class="cat"><span>Fun</span><div class="track"><i style="width:18%"></i></div><span class="num">$96</span></div>' +
+          "</div>" +
+          '<div class="row"><input placeholder="Add a merchant…" /><button class="vessel-primary">Add</button></div>' +
+          "</div>";
+        var doc =
+          '<!doctype html><html><head><meta charset="utf-8" /><style>' + BASE + DEMO + "</style></head><body>" + TOOL + "</body></html>";
+
+        var sel = document.getElementById("demo-theme");
+        var modeBtn = document.getElementById("demo-mode");
+        var theme = "default", mode = "light";
+        function apply() {
+          var d = frame.contentDocument;
+          if (!d) return;
+          var v = vars(T[theme][mode]);
+          var s = d.documentElement.style;
+          for (var k in v) s.setProperty(k, v[k]);
+        }
+        frame.addEventListener("load", apply);
+        frame.srcdoc = doc;
+        if (sel) sel.addEventListener("change", function () { theme = sel.value; apply(); });
+        if (modeBtn) modeBtn.addEventListener("click", function () {
+          mode = mode === "light" ? "dark" : "light";
+          modeBtn.textContent = mode === "light" ? "☾ Dark" : "☀ Light";
+          apply();
+        });
+      })();
     </script>
   </body>
 </html>

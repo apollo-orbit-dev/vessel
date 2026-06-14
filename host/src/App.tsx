@@ -411,7 +411,7 @@ export function App() {
           setAppearance("system");
           break;
         case "about":
-          showToast("Vessel 0.1.0 — opens self-contained .vessel tool bundles");
+          showToast(`Vessel ${__APP_VERSION__} — opens self-contained .vessel tool bundles`);
           break;
         case "docs":
           showToast("Documentation lives in the project repo (docs/)");

@@ -1,0 +1,634 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Job search</title>
+    <!-- Layout only — all colors come from the Vessel theme (--vessel-* tokens +
+         base styles injected by the host). Toggle light/dark or the theme in the
+         host and this UI follows. Company initials tiles use a small fixed oklch
+         ramp keyed by each company's hue (categorical, not themed). -->
+    <style>
+      html, body { height: 100%; }
+      body {
+        margin: 0;
+        font: 13px var(--vessel-font);
+        color: var(--vessel-text);
+        background: var(--vessel-bg);
+      }
+      .app { height: 100vh; display: flex; flex-direction: column; }
+
+      /* Header */
+      .header {
+        display: flex; align-items: baseline; gap: 12px;
+        padding: 15px 24px;
+        background: var(--vessel-surface);
+        border-bottom: 1px solid var(--vessel-border);
+      }
+      .header .icon { align-self: center; color: var(--vessel-text-muted); display: flex; }
+      .header .title { font: 600 16px var(--vessel-font); letter-spacing: -0.01em; }
+      .header .meta { font: 11.5px var(--vessel-font-mono); color: var(--vessel-text-muted); }
+      .header .spacer { flex: 1; }
+      .add-btn {
+        align-self: center;
+        display: inline-flex; align-items: center; gap: 6px;
+        font: 500 12.5px var(--vessel-font);
+        border-radius: 7px; padding: 6px 11px; cursor: pointer;
+        border: 1px solid var(--vessel-border);
+        background: var(--vessel-accent); color: var(--vessel-accent-text);
+      }
+      .add-btn:hover { filter: brightness(1.05); }
+      .add-btn svg { display: block; }
+
+      /* Board: 4 columns separated by 1px hairlines */
+      .board {
+        flex: 1; min-height: 0;
+        display: grid; grid-template-columns: repeat(4, 1fr);
+        gap: 1px; background: var(--vessel-border);
+      }
+      .col { background: var(--vessel-bg); display: flex; flex-direction: column; min-height: 0; }
+      .col.alt .col-body { background: var(--vessel-surface); }
+
+      .col-head {
+        display: flex; align-items: center; gap: 8px;
+        padding: 13px 16px 10px;
+        border-bottom: 1px solid var(--vessel-border);
+      }
+      .col-stage {
+        font: 600 11px var(--vessel-font); letter-spacing: 0.05em;
+        text-transform: uppercase; color: var(--vessel-text-muted);
+      }
+      .col.offer .col-stage { color: var(--vessel-accent); }
+      .col-count { font: 11px var(--vessel-font-mono); color: var(--vessel-text-muted); }
+
+      .col-body {
+        flex: 1; min-height: 0; overflow-y: auto;
+        padding: 12px 12px 16px;
+        display: flex; flex-direction: column; gap: 10px;
+      }
+
+      /* Card */
+      .card {
+        padding: 12px 13px;
+        border-radius: 10px;
+        background: var(--vessel-surface);
+        border: 1px solid var(--vessel-border);
+      }
+      .card:hover { border-color: var(--vessel-text-muted); }
+      .card-top { display: flex; align-items: center; gap: 9px; }
+      .tile {
+        width: 26px; height: 26px; border-radius: 7px; flex: 0 0 auto;
+        display: flex; align-items: center; justify-content: center;
+        font: 600 10px var(--vessel-font-mono);
+      }
+      .card-co {
+        flex: 1; min-width: 0;
+        font: 600 13px var(--vessel-font); color: var(--vessel-text);
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      }
+      /* Small icon buttons on the card (advance chevron, edit, move) */
+      .iconbtn {
+        width: 24px; height: 24px; flex: 0 0 auto;
+        border-radius: 6px; border: none; background: transparent;
+        color: var(--vessel-text-muted); cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+        padding: 0; transition: background .12s, color .12s;
+      }
+      .iconbtn:hover {
+        background: color-mix(in srgb, var(--vessel-accent) 12%, transparent);
+        color: var(--vessel-accent);
+      }
+      .iconbtn:disabled { opacity: 0.3; cursor: default; }
+      .iconbtn:disabled:hover { background: transparent; color: var(--vessel-text-muted); }
+      .iconbtn.danger:hover {
+        background: color-mix(in srgb, var(--vessel-danger) 12%, transparent);
+        color: var(--vessel-danger);
+      }
+      .card-role { font: 11.5px var(--vessel-font); color: var(--vessel-text-muted); margin-top: 6px; }
+      .card-foot { display: flex; align-items: center; gap: 8px; margin-top: 9px; }
+      .card-days { font: 10.5px var(--vessel-font-mono); color: var(--vessel-text-muted); }
+      .spacer { flex: 1; }
+
+      /* Per-card stage picker: back / forward through the 4 stages */
+      .card-move {
+        display: flex; align-items: center; gap: 2px; margin-top: 10px;
+        padding-top: 9px; border-top: 1px solid var(--vessel-border);
+      }
+      .card-move .stage-now {
+        flex: 1; min-width: 0;
+        font: 10px var(--vessel-font); letter-spacing: 0.04em;
+        text-transform: uppercase; color: var(--vessel-text-muted);
+      }
+      .card-move .movebtn {
+        width: 22px; height: 22px;
+      }
+
+      .chip {
+        display: inline-flex; align-items: center; gap: 4px;
+        font: 10px var(--vessel-font); border-radius: 4px; padding: 2px 6px;
+        color: var(--vessel-text-muted);
+        background: color-mix(in srgb, var(--vessel-text) 6%, transparent);
+      }
+      .chip.overdue {
+        color: var(--vessel-danger);
+        background: color-mix(in srgb, var(--vessel-danger) 12%, transparent);
+      }
+      .chip svg { display: block; }
+
+      .col-empty { padding: 16px 4px; font: 11.5px var(--vessel-font); color: var(--vessel-text-muted); text-align: center; }
+
+      /* Modal (add / edit) — styled to match the host theme */
+      .overlay {
+        position: fixed; inset: 0; z-index: 10;
+        display: none; align-items: center; justify-content: center;
+        background: color-mix(in srgb, var(--vessel-text) 38%, transparent);
+        padding: 24px;
+      }
+      .overlay.open { display: flex; }
+      .modal {
+        width: 100%; max-width: 380px;
+        background: var(--vessel-surface);
+        border: 1px solid var(--vessel-border);
+        border-radius: 12px;
+        padding: 20px 22px 18px;
+        box-shadow: 0 18px 50px -12px color-mix(in srgb, var(--vessel-text) 28%, transparent);
+        max-height: calc(100vh - 48px); overflow-y: auto;
+      }
+      .modal h2 { margin: 0 0 16px; font: 600 15px var(--vessel-font); letter-spacing: -0.01em; }
+      .field { margin-bottom: 13px; }
+      .field label {
+        display: block; margin-bottom: 5px;
+        font: 500 11px var(--vessel-font); letter-spacing: 0.03em;
+        text-transform: uppercase; color: var(--vessel-text-muted);
+      }
+      .field input[type="text"],
+      .field input[type="number"],
+      .field select {
+        width: 100%; box-sizing: border-box;
+        font: 13px var(--vessel-font);
+        padding: 8px 10px; border-radius: 7px;
+        color: var(--vessel-text);
+        background: var(--vessel-field, var(--vessel-bg));
+        border: 1px solid var(--vessel-border);
+      }
+      .field input[type="number"] { font-family: var(--vessel-font-mono); }
+      .field input:focus, .field select:focus {
+        outline: none; border-color: var(--vessel-accent);
+      }
+      .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+      .check {
+        display: flex; align-items: center; gap: 8px;
+        font: 12.5px var(--vessel-font); color: var(--vessel-text); cursor: pointer;
+      }
+      .check input { width: 15px; height: 15px; accent-color: var(--vessel-accent); }
+      .modal-err {
+        display: none; margin: 4px 0 10px;
+        font: 11.5px var(--vessel-font); color: var(--vessel-danger);
+      }
+      .modal-err.show { display: block; }
+      .modal-actions {
+        display: flex; align-items: center; gap: 8px;
+        margin-top: 16px;
+      }
+      .modal-actions .spacer { flex: 1; }
+      .btn {
+        font: 500 13px var(--vessel-font);
+        padding: 8px 14px; border-radius: 7px; cursor: pointer;
+        border: 1px solid var(--vessel-border);
+        background: var(--vessel-surface); color: var(--vessel-text);
+      }
+      .btn:hover { background: color-mix(in srgb, var(--vessel-text) 6%, transparent); }
+      .btn.primary {
+        background: var(--vessel-accent); color: var(--vessel-accent-text);
+        border-color: transparent;
+      }
+      .btn.primary:hover { filter: brightness(1.05); background: var(--vessel-accent); }
+      .btn.danger {
+        color: var(--vessel-danger);
+        border-color: color-mix(in srgb, var(--vessel-danger) 40%, transparent);
+        background: transparent;
+      }
+      .btn.danger:hover { background: color-mix(in srgb, var(--vessel-danger) 12%, transparent); }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <header class="header">
+        <span class="icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3.5" y="7.5" width="17" height="12" rx="2" />
+            <path d="M8.5 7.5V6A1.5 1.5 0 0 1 10 4.5h4A1.5 1.5 0 0 1 15.5 6v1.5" />
+            <path d="M3.5 12.5h17" />
+          </svg>
+        </span>
+        <span class="title">Job search</span>
+        <span class="meta" id="meta"></span>
+        <span class="spacer"></span>
+        <button class="add-btn" id="addBtn" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+          Add job
+        </button>
+      </header>
+      <div class="board" id="board"></div>
+    </div>
+
+    <!-- Add / edit modal -->
+    <div class="overlay" id="overlay">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+        <h2 id="modalTitle">Add job</h2>
+        <div class="field">
+          <label for="f-company">Company</label>
+          <input type="text" id="f-company" maxlength="120" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label for="f-role">Role</label>
+          <input type="text" id="f-role" maxlength="120" autocomplete="off" />
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label for="f-stage">Stage</label>
+            <select id="f-stage"></select>
+          </div>
+          <div class="field">
+            <label for="f-days">Days ago</label>
+            <input type="number" id="f-days" min="0" max="3650" step="1" value="0" />
+          </div>
+        </div>
+        <div class="field">
+          <label for="f-follow">Follow-up</label>
+          <input type="text" id="f-follow" maxlength="120" autocomplete="off"
+                 placeholder="e.g. Reply to recruiter · Mar 14" />
+        </div>
+        <label class="check">
+          <input type="checkbox" id="f-overdue" />
+          Follow-up is overdue
+        </label>
+        <div class="modal-err" id="modalErr"></div>
+        <div class="modal-actions">
+          <button class="btn danger" id="deleteBtn" type="button" style="display:none">Delete</button>
+          <span class="spacer"></span>
+          <button class="btn" id="cancelBtn" type="button">Cancel</button>
+          <button class="btn primary" id="saveBtn" type="button">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const $board = document.getElementById("board");
+      const $meta = document.getElementById("meta");
+      const j = (r) => r.json();
+
+      let STAGES = ["Applied", "Screen", "Onsite", "Offer"];
+
+      // SVG icon helpers (monoline, stroke 1.6, currentColor).
+      function svg(inner, size) {
+        const s = size || 15;
+        return (
+          '<svg width="' + s + '" height="' + s + '" viewBox="0 0 24 24" fill="none" ' +
+          'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" ' +
+          'stroke-linejoin="round" aria-hidden="true">' + inner + "</svg>"
+        );
+      }
+      const chevR = (s) => svg('<path d="M9 6l6 6-6 6" />', s || 15);
+      const chevL = (s) => svg('<path d="M15 6l-6 6 6 6" />', s || 15);
+      const pencil = (s) =>
+        svg(
+          '<path d="M14.5 5.5l4 4M4 20l1-4 10.5-10.5a1.5 1.5 0 0 1 2 0l1.5 1.5a1.5 1.5 0 0 1 0 2L8.5 19.5 4 20z" />',
+          s || 14
+        );
+      const bell = () =>
+        svg(
+          '<path d="M6.5 10a5.5 5.5 0 0 1 11 0c0 4.5 1.8 5.8 1.8 5.8H4.7S6.5 14.5 6.5 10z" />' +
+            '<path d="M10 19a2 2 0 0 0 4 0" />',
+          10
+        );
+
+      function initials(name) {
+        return name
+          .replace(/[^A-Za-z0-9 ]/g, "")
+          .split(" ")
+          .map((w) => w[0])
+          .filter(Boolean)
+          .slice(0, 2)
+          .join("")
+          .toUpperCase();
+      }
+
+      // Categorical company tile from its hue (fixed oklch ramp, theme-aware via
+      // prefers-color-scheme; the host re-themes everything else live).
+      function tileStyle(hue) {
+        const dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+        const bg = dark
+          ? "oklch(0.42 0.09 " + hue + ")"
+          : "oklch(0.93 0.09 " + hue + ")";
+        const fg = dark
+          ? "oklch(0.9 0.12 " + hue + ")"
+          : "oklch(0.42 0.12 " + hue + ")";
+        return "background:" + bg + ";color:" + fg + ";";
+      }
+
+      function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, (c) => (
+          { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
+        ));
+      }
+
+      async function advance(id) {
+        await fetch("/api/advance", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ id }),
+        });
+        await render();
+      }
+
+      async function move(id, stage) {
+        await fetch("/api/move", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ id, stage }),
+        });
+        await render();
+      }
+
+      function cardEl(job, isLastStage) {
+        const card = document.createElement("div");
+        card.className = "card";
+
+        const top = document.createElement("div");
+        top.className = "card-top";
+
+        const tile = document.createElement("span");
+        tile.className = "tile";
+        tile.setAttribute("style", tileStyle(job.hue));
+        tile.textContent = initials(job.company);
+
+        const co = document.createElement("div");
+        co.className = "card-co";
+        co.textContent = job.company;
+
+        top.append(tile, co);
+
+        // Edit button (opens the modal pre-filled).
+        const editBtn = document.createElement("button");
+        editBtn.className = "iconbtn";
+        editBtn.title = "Edit job";
+        editBtn.innerHTML = pencil();
+        editBtn.onclick = () => openModal(job);
+        top.append(editBtn);
+
+        // Existing advance chevron — kept as-is (hidden on the last stage).
+        if (!isLastStage) {
+          const btn = document.createElement("button");
+          btn.className = "iconbtn";
+          btn.title = "Advance to next stage";
+          btn.innerHTML = chevR();
+          btn.onclick = () => advance(job.id);
+          top.append(btn);
+        }
+
+        const role = document.createElement("div");
+        role.className = "card-role";
+        role.textContent = job.role;
+
+        const foot = document.createElement("div");
+        foot.className = "card-foot";
+        const days = document.createElement("span");
+        days.className = "card-days";
+        days.textContent = job.days + "d ago";
+        const spacer = document.createElement("div");
+        spacer.className = "spacer";
+        foot.append(days, spacer);
+
+        if (job.follow) {
+          const chip = document.createElement("span");
+          chip.className = "chip" + (job.overdue ? " overdue" : "");
+          // Use textContent for user text; only the bell icon is trusted markup.
+          if (job.overdue) {
+            const ico = document.createElement("span");
+            ico.style.display = "inline-flex";
+            ico.innerHTML = bell();
+            chip.append(ico);
+          }
+          const txt = document.createElement("span");
+          txt.textContent = job.follow;
+          chip.append(txt);
+          foot.append(chip);
+        }
+
+        card.append(top, role, foot);
+
+        // Per-card stage picker: move back / forward to ANY stage.
+        const moveRow = document.createElement("div");
+        moveRow.className = "card-move";
+
+        const back = document.createElement("button");
+        back.className = "iconbtn movebtn";
+        back.title = "Move back a stage";
+        back.innerHTML = chevL(13);
+        back.disabled = job.stage <= 0;
+        back.onclick = () => move(job.id, job.stage - 1);
+
+        const now = document.createElement("span");
+        now.className = "stage-now";
+        now.textContent = STAGES[job.stage] || "";
+
+        const fwd = document.createElement("button");
+        fwd.className = "iconbtn movebtn";
+        fwd.title = "Move forward a stage";
+        fwd.innerHTML = chevR(13);
+        fwd.disabled = job.stage >= STAGES.length - 1;
+        fwd.onclick = () => move(job.id, job.stage + 1);
+
+        moveRow.append(back, now, fwd);
+        card.append(moveRow);
+
+        return card;
+      }
+
+      async function render() {
+        const data = await fetch("/api/board").then(j);
+        STAGES = data.stages;
+        populateStageSelect();
+        const total = data.counts.reduce((a, b) => a + b, 0);
+        $meta.textContent = total + " active · spring 2026";
+
+        $board.innerHTML = "";
+        const lastIndex = data.stages.length - 1;
+        data.columns.forEach((col, i) => {
+          const isLast = col.index === lastIndex;
+          const colEl = document.createElement("div");
+          colEl.className = "col" + (i % 2 ? " alt" : "") + (isLast ? " offer" : "");
+
+          const head = document.createElement("div");
+          head.className = "col-head";
+          const stage = document.createElement("span");
+          stage.className = "col-stage";
+          stage.textContent = col.stage;
+          const count = document.createElement("span");
+          count.className = "col-count";
+          count.textContent = col.jobs.length;
+          head.append(stage, count);
+
+          const bodyEl = document.createElement("div");
+          bodyEl.className = "col-body";
+          if (col.jobs.length === 0) {
+            const empty = document.createElement("div");
+            empty.className = "col-empty";
+            empty.textContent = "—";
+            bodyEl.append(empty);
+          } else {
+            for (const job of col.jobs) bodyEl.append(cardEl(job, isLast));
+          }
+
+          colEl.append(head, bodyEl);
+          $board.append(colEl);
+        });
+      }
+
+      /* ---------------- Add / edit modal ---------------- */
+      const $overlay = document.getElementById("overlay");
+      const $modalTitle = document.getElementById("modalTitle");
+      const $err = document.getElementById("modalErr");
+      const F = {
+        company: document.getElementById("f-company"),
+        role: document.getElementById("f-role"),
+        stage: document.getElementById("f-stage"),
+        days: document.getElementById("f-days"),
+        follow: document.getElementById("f-follow"),
+        overdue: document.getElementById("f-overdue"),
+      };
+      const $deleteBtn = document.getElementById("deleteBtn");
+
+      let editingId = null;       // null = creating a new job
+      let editingHue = 230;       // preserve a job's tile hue across edits
+
+      function populateStageSelect() {
+        const cur = F.stage.value;
+        F.stage.innerHTML = "";
+        STAGES.forEach((label, i) => {
+          const opt = document.createElement("option");
+          opt.value = String(i);
+          opt.textContent = label;
+          F.stage.append(opt);
+        });
+        if (cur !== "") F.stage.value = cur;
+      }
+
+      function setErr(msg) {
+        if (msg) { $err.textContent = msg; $err.classList.add("show"); }
+        else { $err.textContent = ""; $err.classList.remove("show"); }
+      }
+
+      function openModal(job) {
+        setErr("");
+        if (job) {
+          editingId = job.id;
+          editingHue = job.hue;
+          $modalTitle.textContent = "Edit job";
+          $deleteBtn.style.display = "";
+          F.company.value = job.company;
+          F.role.value = job.role || "";
+          F.stage.value = String(job.stage);
+          F.days.value = String(job.days);
+          F.follow.value = job.follow || "";
+          F.overdue.checked = !!job.overdue;
+        } else {
+          editingId = null;
+          // New jobs get a pseudo-random hue so tiles don't all look alike.
+          editingHue = Math.floor(Math.random() * 360);
+          $modalTitle.textContent = "Add job";
+          $deleteBtn.style.display = "none";
+          F.company.value = "";
+          F.role.value = "";
+          F.stage.value = "0";
+          F.days.value = "0";
+          F.follow.value = "";
+          F.overdue.checked = false;
+        }
+        $overlay.classList.add("open");
+        F.company.focus();
+      }
+
+      function closeModal() {
+        $overlay.classList.remove("open");
+        editingId = null;
+      }
+
+      async function saveJob() {
+        const company = F.company.value.trim();
+        if (!company) { setErr("Company is required."); F.company.focus(); return; }
+        let days = parseInt(F.days.value, 10);
+        if (!Number.isFinite(days) || days < 0) days = 0;
+        if (days > 3650) days = 3650;
+        let stage = parseInt(F.stage.value, 10);
+        if (!(stage >= 0 && stage < STAGES.length)) stage = 0;
+
+        const payload = {
+          company,
+          role: F.role.value.trim(),
+          hue: editingHue,
+          stage,
+          days,
+          follow: F.follow.value.trim() || null,
+          overdue: F.overdue.checked,
+        };
+
+        const url = editingId == null ? "/api/jobs" : "/api/jobs/" + editingId;
+        const method = editingId == null ? "POST" : "PATCH";
+        const res = await fetch(url, {
+          method,
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          let detail = "Could not save job.";
+          try {
+            const body = await res.json();
+            if (body && body.detail) {
+              detail = typeof body.detail === "string"
+                ? body.detail
+                : (body.detail[0] && body.detail[0].msg) || detail;
+            }
+          } catch (e) {}
+          setErr(detail);
+          return;
+        }
+        closeModal();
+        await render();
+      }
+
+      async function deleteJob() {
+        if (editingId == null) return;
+        const res = await fetch("/api/jobs/" + editingId, { method: "DELETE" });
+        if (!res.ok && res.status !== 404) { setErr("Could not delete job."); return; }
+        closeModal();
+        await render();
+      }
+
+      document.getElementById("addBtn").onclick = () => openModal(null);
+      document.getElementById("cancelBtn").onclick = closeModal;
+      document.getElementById("saveBtn").onclick = saveJob;
+      $deleteBtn.onclick = deleteJob;
+      $overlay.addEventListener("mousedown", (e) => {
+        if (e.target === $overlay) closeModal();
+      });
+      document.addEventListener("keydown", (e) => {
+        if (!$overlay.classList.contains("open")) return;
+        if (e.key === "Escape") closeModal();
+        else if (e.key === "Enter" && e.target.tagName !== "SELECT") saveJob();
+      });
+
+      // Re-render on theme (light/dark) change so the categorical tiles flip.
+      if (window.matchMedia) {
+        window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
+      }
+
+      render();
+    </script>
+  </body>
+</html>

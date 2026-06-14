@@ -80,7 +80,13 @@ export function mountBundleUi(
   const doc = injectIntoHead(html, cspMeta + themeBlock + bridgeShim(token));
 
   const iframe = document.createElement("iframe");
-  iframe.setAttribute("sandbox", "allow-scripts"); // opaque origin, no host access
+  // opaque origin, no host access. `allow-modals` lets bundle UIs use
+  // window.print()/alert/confirm like an ordinary web page (Phase 12, for the
+  // invoice example's print-to-PDF). It does NOT grant same-origin, popups,
+  // downloads, top-navigation, or network — the isolation boundary (no host
+  // access, default-deny egress, no writable handle) is unchanged; worst case a
+  // bundle spams modal dialogs in its own tab, no worse than any web page.
+  iframe.setAttribute("sandbox", "allow-scripts allow-modals");
   iframe.style.cssText = `border:0;width:100%;height:100%;display:block;background:${opts.bgColor ?? "#fff"}`;
   iframe.srcdoc = doc;
 

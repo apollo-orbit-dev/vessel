@@ -1,0 +1,783 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Personal CRM</title>
+    <!-- Layout only — all colors come from the Vessel theme (--vessel-* tokens
+         + base component styles injected by the host). Avatar initials use a
+         small categorical oklch ramp keyed off each person's hue; that's the only
+         color computed in-tool, and it adapts to light/dark via color-scheme. -->
+    <style>
+      html, body { height: 100%; }
+      body {
+        margin: 0; padding: 0;
+        font-family: var(--vessel-font);
+        color: var(--vessel-text);
+        background: var(--vessel-bg);
+      }
+      .app { display: flex; height: 100vh; }
+
+      /* ---- left list panel (surface) ---- */
+      .list {
+        width: 340px; flex: 0 0 340px; display: flex; flex-direction: column;
+        min-height: 0;
+        background: var(--vessel-surface);
+        border-right: 1px solid var(--vessel-border);
+      }
+      .list-head {
+        display: flex; align-items: center; gap: 10px;
+        padding: 14px 16px 12px; border-bottom: 1px solid var(--vessel-border);
+      }
+      .list-head .title { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+      .list-head .count {
+        margin-left: auto; font-family: var(--vessel-font-mono); font-size: 11px;
+        color: var(--vessel-text-muted);
+      }
+      .icon { color: var(--vessel-text-muted); flex: 0 0 auto; }
+
+      .chips { display: flex; gap: 5px; padding: 10px 14px; }
+      .chip {
+        padding: 5px 11px; border-radius: 14px;
+        border: 1px solid var(--vessel-border); background: transparent;
+        color: var(--vessel-text-muted); cursor: pointer;
+        font: 500 12px var(--vessel-font);
+      }
+      .chip:hover { background: color-mix(in srgb, var(--vessel-text) 6%, transparent); }
+      .chip.on {
+        border-color: color-mix(in srgb, var(--vessel-accent) 30%, transparent);
+        background: color-mix(in srgb, var(--vessel-accent) 12%, transparent);
+        color: var(--vessel-accent); font-weight: 600;
+      }
+
+      .rows { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 0 10px; }
+      .row {
+        display: flex; align-items: center; gap: 12px; width: 100%;
+        text-align: left; padding: 11px 16px; cursor: pointer;
+        border: none; border-left: 2px solid transparent; background: transparent;
+        font: inherit; color: var(--vessel-text);
+      }
+      .row:hover { background: color-mix(in srgb, var(--vessel-text) 6%, transparent); }
+      .row.active {
+        border-left-color: var(--vessel-accent);
+        background: color-mix(in srgb, var(--vessel-accent) 12%, transparent);
+      }
+      .avatar {
+        flex: 0 0 auto; border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        font: 600 12.5px var(--vessel-font);
+      }
+      .row .avatar { width: 36px; height: 36px; }
+      .row-main { flex: 1; min-width: 0; }
+      .row-name {
+        font: 500 13.5px var(--vessel-font);
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      }
+      .row-rel {
+        margin-top: 2px; font: 11px var(--vessel-font); color: var(--vessel-text-muted);
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      }
+      .row-meta { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+      .since { font: 11px var(--vessel-font-mono); color: var(--vessel-text-muted); }
+      .since.overdue { color: var(--vessel-danger); }
+      .dot { width: 6px; height: 6px; border-radius: 50%; flex: 0 0 auto; }
+      .dot.overdue { background: var(--vessel-danger); }
+
+      /* ---- right detail ---- */
+      .detail { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; overflow: auto; }
+      .detail.empty { align-items: center; justify-content: center; }
+
+      .detail-head { padding: 26px 30px 0; display: flex; align-items: center; gap: 16px; }
+      .detail-head .avatar { width: 52px; height: 52px; font-size: 17px; }
+      .detail-name { font: 600 19px var(--vessel-font); letter-spacing: -0.012em; }
+      .detail-rel { margin-top: 3px; font: 12.5px var(--vessel-font); color: var(--vessel-text-muted); }
+      .tags { display: flex; gap: 6px; flex-wrap: wrap; }
+      .tag {
+        display: inline-flex; align-items: center; gap: 5px;
+        font: 11px var(--vessel-font); color: var(--vessel-text-muted);
+        background: color-mix(in srgb, var(--vessel-text) 7%, transparent);
+        border-radius: 5px; padding: 4px 8px;
+      }
+
+      .banner {
+        display: flex; align-items: center; gap: 14px;
+        margin: 22px 30px 0; padding: 14px 18px;
+        border-radius: 10px;
+        background: var(--vessel-surface);
+        border: 1px solid var(--vessel-border);
+      }
+      .banner.overdue {
+        background: color-mix(in srgb, var(--vessel-danger) 9%, transparent);
+        border-color: color-mix(in srgb, var(--vessel-danger) 30%, transparent);
+      }
+      .banner .icon { color: var(--vessel-text-muted); }
+      .banner.overdue .icon { color: var(--vessel-danger); }
+      .banner-main { flex: 1; }
+      .banner-line { font: 13px var(--vessel-font); color: var(--vessel-text); }
+      .banner-sub { margin-top: 2px; font: 11.5px var(--vessel-font); color: var(--vessel-text-muted); }
+      .banner button { display: inline-flex; align-items: center; gap: 7px; flex: 0 0 auto; }
+
+      .section { padding: 22px 30px 0; }
+      .section.grow { flex: 1; min-height: 0; padding-bottom: 22px; }
+      .section-label {
+        font: 600 10.5px var(--vessel-font); letter-spacing: 0.07em;
+        text-transform: uppercase; color: var(--vessel-text-muted); margin-bottom: 8px;
+      }
+      .note { margin: 0; font: 14px/1.65 var(--vessel-font); color: var(--vessel-text); }
+
+      .hist-row {
+        display: flex; align-items: center; gap: 10px; padding: 8px 0;
+        border-top: 1px solid var(--vessel-border);
+      }
+      .hist-row:first-of-type { border-top: none; }
+      .hist-dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
+      .hist-method {
+        display: inline-flex; flex: 0 0 auto; color: var(--vessel-text-muted);
+      }
+      .hist-text {
+        flex: 1; min-width: 0; font: 12.5px var(--vessel-font-mono);
+        color: var(--vessel-text); overflow: hidden; text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .hist-actions {
+        display: flex; gap: 2px; flex: 0 0 auto; opacity: 0;
+        transition: opacity 0.1s;
+      }
+      .hist-row:hover .hist-actions, .hist-actions:focus-within { opacity: 1; }
+      .histbtn {
+        display: inline-flex; align-items: center; justify-content: center;
+        padding: 4px; border-radius: 6px; border: none; background: transparent;
+        color: var(--vessel-text-muted); cursor: pointer;
+      }
+      .histbtn:hover { background: color-mix(in srgb, var(--vessel-text) 8%, transparent); }
+      .histbtn.vessel-danger:hover { color: var(--vessel-danger); }
+
+      /* small icon button used in list head + detail actions */
+      .iconbtn {
+        display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+        flex: 0 0 auto; padding: 6px 10px; border-radius: 7px;
+        border: 1px solid var(--vessel-border); background: transparent;
+        color: var(--vessel-text); cursor: pointer; font: 500 12px var(--vessel-font);
+      }
+      .iconbtn:hover { background: color-mix(in srgb, var(--vessel-text) 6%, transparent); }
+      .list-head .iconbtn { padding: 5px; }
+      .detail-actions { display: flex; gap: 8px; }
+
+      /* ---- modal ---- */
+      .overlay {
+        position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+        background: color-mix(in srgb, var(--vessel-text) 32%, transparent);
+        padding: 24px; z-index: 10;
+      }
+      .modal {
+        width: 100%; max-width: 420px; max-height: 100%; overflow: auto;
+        background: var(--vessel-bg); color: var(--vessel-text);
+        border: 1px solid var(--vessel-border); border-radius: var(--vessel-radius);
+        padding: 22px 24px;
+      }
+      .modal h2 { margin: 0 0 16px; font: 600 16px var(--vessel-font); letter-spacing: -0.01em; }
+      .field { margin-bottom: 14px; }
+      .field label {
+        display: block; margin-bottom: 5px;
+        font: 600 10.5px var(--vessel-font); letter-spacing: 0.06em;
+        text-transform: uppercase; color: var(--vessel-text-muted);
+      }
+      .field input, .field textarea {
+        width: 100%; box-sizing: border-box; font: 13.5px var(--vessel-font);
+      }
+      .field input[type="date"] { font-family: var(--vessel-font-mono); }
+      .field .hint { margin-top: 4px; font: 11px var(--vessel-font); color: var(--vessel-text-muted); }
+      .err {
+        margin-bottom: 12px; padding: 8px 10px; border-radius: 7px; font: 12px var(--vessel-font);
+        color: var(--vessel-danger);
+        background: color-mix(in srgb, var(--vessel-danger) 10%, transparent);
+        border: 1px solid color-mix(in srgb, var(--vessel-danger) 30%, transparent);
+      }
+      .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+      .modal-actions .spacer { margin-right: auto; }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <aside class="list">
+        <div class="list-head">
+          <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="9" cy="8.5" r="3.2" /><path d="M3.5 19a5.5 5.5 0 0 1 11 0" />
+            <path d="M15.5 5.6a3.2 3.2 0 0 1 0 5.8M16.5 19a5.5 5.5 0 0 0-2-4.3" />
+          </svg>
+          <span class="title">People</span>
+          <span class="count" id="count">0</span>
+          <button class="iconbtn" id="add" title="Add person" aria-label="Add person">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          </button>
+        </div>
+        <div class="chips" id="chips"></div>
+        <div class="rows" id="rows"></div>
+      </aside>
+      <main class="detail empty" id="detail">
+        <span class="vessel-muted">Select a person.</span>
+      </main>
+    </div>
+    <div id="modal-root"></div>
+
+    <script>
+      const j = (r) => r.json();
+      let people = [];
+      let followUpDays = 90;
+      let filter = "all"; // 'all' | 'due'
+      let selId = null;
+
+      // ---- avatar color from a person's categorical hue ----
+      // color-scheme on the iframe drives whether the host theme is light/dark,
+      // but we can't read it cheaply; use prefers-color-scheme as the cue, which
+      // the host keeps in sync with its light/dark toggle.
+      const isDark = () => matchMedia && matchMedia("(prefers-color-scheme: dark)").matches;
+      function avatarStyle(hue) {
+        const dark = isDark();
+        const bgL = dark ? 0.42 : 0.92, fgL = dark ? 0.9 : 0.42;
+        return (
+          "background:oklch(" + bgL + " 0.09 " + hue + ");" +
+          "color:oklch(" + fgL + " 0.12 " + hue + ");"
+        );
+      }
+      function initials(name) {
+        return name.split(/\s+/).map((w) => w[0]).slice(0, 2).join("");
+      }
+      function sinceLabel(days) { return days <= 0 ? "today" : days + "d"; }
+
+      // ---- icons (inline monoline SVG, stroke 1.6, currentColor) ----
+      const bellSvg =
+        '<svg class="icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M6.5 10a5.5 5.5 0 0 1 11 0c0 4.5 1.8 5.8 1.8 5.8H4.7S6.5 14.5 6.5 10z"/><path d="M10 19a2 2 0 0 0 4 0"/></svg>';
+      const mailSvg =
+        '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' +
+        '<rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="M4 7l8 6 8-6"/></svg>';
+      const tagSvg =
+        '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M4 4.5h7l8.4 8.4a1.5 1.5 0 0 1 0 2.1l-4.4 4.4a1.5 1.5 0 0 1-2.1 0L4 11V4.5z"/><circle cx="8" cy="8" r="1.3"/></svg>';
+      const pencilSvg =
+        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M14.5 5.5l4 4M4 20l1-4L16 5a2 2 0 0 1 3 3L8 19l-4 1z"/></svg>';
+      const trashSvg =
+        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M4 6.5h16M9 6.5V4.5h6v2M6.5 6.5l1 13h9l1-13M10 10v6M14 10v6"/></svg>';
+
+      // ---- contact methods (must match CONTACT_METHODS in app/main.py) ----
+      // Each has a label (verb shown in the timeline) and a small monoline icon.
+      const phoneSvg =
+        '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M6.5 4h3l1.5 4-2 1.5a11 11 0 0 0 5 5l1.5-2 4 1.5v3a2 2 0 0 1-2.2 2A16 16 0 0 1 4.5 6.2 2 2 0 0 1 6.5 4z"/></svg>';
+      const chatSvg =
+        '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M4.5 5.5h15v10h-9l-4 3v-3h-2z"/></svg>';
+      const personSvg =
+        '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' +
+        '<circle cx="12" cy="8" r="3.2"/><path d="M5.5 19.5a6.5 6.5 0 0 1 13 0"/></svg>';
+      const dotSvg =
+        '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' +
+        '<circle cx="12" cy="12" r="7"/></svg>';
+      const mailMiniSvg =
+        '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' +
+        '<rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="M4 7l8 6 8-6"/></svg>';
+      const METHODS = [
+        { id: "email", label: "Emailed", icon: mailMiniSvg },
+        { id: "call", label: "Called", icon: phoneSvg },
+        { id: "text", label: "Texted", icon: chatSvg },
+        { id: "in_person", label: "Met in person", icon: personSvg },
+        { id: "other", label: "Other", icon: dotSvg },
+      ];
+      const METHOD_BY_ID = Object.fromEntries(METHODS.map((m) => [m.id, m]));
+      function methodMeta(id) { return METHOD_BY_ID[id] || METHOD_BY_ID.other; }
+
+      const $count = document.getElementById("count");
+      const $chips = document.getElementById("chips");
+      const $rows = document.getElementById("rows");
+      const $detail = document.getElementById("detail");
+
+      function dueCount() { return people.filter((p) => p.overdue).length; }
+
+      function renderChips() {
+        $chips.innerHTML = "";
+        const defs = [
+          ["all", "All"],
+          ["due", "Needs follow-up · " + dueCount()],
+        ];
+        for (const [id, label] of defs) {
+          const b = document.createElement("button");
+          b.className = "chip" + (filter === id ? " on" : "");
+          b.textContent = label;
+          b.onclick = () => { filter = id; render(); };
+          $chips.append(b);
+        }
+      }
+
+      function visiblePeople() {
+        return filter === "due" ? people.filter((p) => p.overdue) : people;
+      }
+
+      function renderRows() {
+        $rows.innerHTML = "";
+        const list = visiblePeople();
+        for (const p of list) {
+          const b = document.createElement("button");
+          b.className = "row" + (p.id === selId ? " active" : "");
+          b.onclick = () => openPerson(p.id);
+
+          const av = document.createElement("span");
+          av.className = "avatar";
+          av.setAttribute("style", avatarStyle(p.hue));
+          av.textContent = initials(p.name);
+
+          const main = document.createElement("div");
+          main.className = "row-main";
+          const nm = document.createElement("div");
+          nm.className = "row-name";
+          nm.textContent = p.name;
+          const rel = document.createElement("div");
+          rel.className = "row-rel";
+          rel.textContent = p.relationship;
+          main.append(nm, rel);
+
+          const meta = document.createElement("span");
+          meta.className = "row-meta";
+          const since = document.createElement("span");
+          since.className = "since" + (p.overdue ? " overdue" : "");
+          since.textContent = sinceLabel(p.days);
+          meta.append(since);
+          if (p.overdue) {
+            const dot = document.createElement("span");
+            dot.className = "dot overdue";
+            meta.append(dot);
+          }
+
+          b.append(av, main, meta);
+          $rows.append(b);
+        }
+      }
+
+      async function openPerson(id) {
+        selId = id;
+        const person = await fetch("/api/people/" + id).then(j);
+        renderDetail(person);
+        renderRows();
+      }
+
+      function renderDetail(p) {
+        $detail.className = "detail";
+        const overdue = p.overdue;
+        const banLine = p.days <= 0
+          ? "Contacted today"
+          : "Last contact " + p.days + " day" + (p.days === 1 ? "" : "s") + " ago";
+
+        const tags = p.tags
+          .map((t) => '<span class="tag">' + tagSvg + escapeHtml(t) + "</span>")
+          .join("");
+
+        $detail.innerHTML =
+          '<div class="detail-head">' +
+            '<span class="avatar" style="' + avatarStyle(p.hue) + '">' + escapeHtml(initials(p.name)) + "</span>" +
+            '<div style="flex:1">' +
+              '<div class="detail-name">' + escapeHtml(p.name) + "</div>" +
+              '<div class="detail-rel">' + escapeHtml(p.relationship) + "</div>" +
+            "</div>" +
+            '<div class="tags">' + tags + "</div>" +
+            '<div class="detail-actions">' +
+              '<button class="iconbtn" id="edit">' + pencilSvg + "Edit</button>" +
+              '<button class="iconbtn vessel-danger" id="del">' + trashSvg + "Delete</button>" +
+            "</div>" +
+          "</div>" +
+
+          '<div class="banner' + (overdue ? " overdue" : "") + '">' +
+            bellSvg +
+            '<div class="banner-main">' +
+              '<div class="banner-line">' + banLine + "</div>" +
+              (overdue ? '<div class="banner-sub">Over ' + followUpDays + " days — time to reach out.</div>" : "") +
+            "</div>" +
+            '<button id="log" class="' + (overdue ? "vessel-primary" : "") + '">' + mailSvg + "Log contact</button>" +
+          "</div>" +
+
+          '<div class="section">' +
+            '<div class="section-label">Notes</div>' +
+            '<p class="note">' + escapeHtml(p.note) + "</p>" +
+          "</div>" +
+
+          '<div class="section grow">' +
+            '<div class="section-label">History</div>' +
+            '<div id="hist"></div>' +
+          "</div>";
+
+        renderHistory(p);
+
+        document.getElementById("log").onclick = () => openLogForm(p);
+        document.getElementById("edit").onclick = () => openForm(p);
+        document.getElementById("del").onclick = () => deletePerson(p);
+      }
+
+      // Build the history timeline as DOM nodes (user text via textContent — never
+      // innerHTML). Each row shows the method icon + verb, the note, the relative
+      // age, and edit/delete affordances.
+      function renderHistory(p) {
+        const $hist = document.getElementById("hist");
+        if (!$hist) return;
+        $hist.innerHTML = "";
+        if (!p.history.length) {
+          const empty = document.createElement("span");
+          empty.className = "vessel-muted";
+          empty.textContent = "No history yet.";
+          $hist.append(empty);
+          return;
+        }
+        const dotStyle = "background:oklch(" + (isDark() ? 0.72 : 0.56) + " 0.1 " + p.hue + ");";
+        for (const h of p.history) {
+          const meta = methodMeta(h.method);
+          const row = document.createElement("div");
+          row.className = "hist-row";
+
+          const dot = document.createElement("span");
+          dot.className = "hist-dot";
+          dot.setAttribute("style", dotStyle);
+
+          const mIcon = document.createElement("span");
+          mIcon.className = "hist-method";
+          mIcon.title = meta.label;
+          mIcon.innerHTML = meta.icon; // static, trusted icon markup
+
+          const text = document.createElement("span");
+          text.className = "hist-text";
+          // meta.label is from our fixed set; h.entry is user text -> textContent.
+          text.textContent =
+            meta.label + " · " + h.entry + " · " +
+            (h.days <= 0 ? "today" : h.days + "d ago");
+
+          const actions = document.createElement("span");
+          actions.className = "hist-actions";
+          const editBtn = document.createElement("button");
+          editBtn.className = "histbtn";
+          editBtn.title = "Edit entry";
+          editBtn.setAttribute("aria-label", "Edit entry");
+          editBtn.innerHTML = pencilSvg;
+          editBtn.onclick = () => openHistoryForm(p, h);
+          const delBtn = document.createElement("button");
+          delBtn.className = "histbtn vessel-danger";
+          delBtn.title = "Delete entry";
+          delBtn.setAttribute("aria-label", "Delete entry");
+          delBtn.innerHTML = trashSvg;
+          delBtn.onclick = () => deleteHistory(p, h);
+          actions.append(editBtn, delBtn);
+
+          row.append(dot, mIcon, text, actions);
+          $hist.append(row);
+        }
+      }
+
+      // Re-fetch the person + the list after a mutation, then re-render both.
+      async function refreshDetail(personId) {
+        const updated = await fetch("/api/people/" + personId).then(j);
+        const data = await fetch("/api/people").then(j);
+        people = data.people;
+        followUpDays = data.follow_up_days;
+        renderDetail(updated);
+        render();
+      }
+
+      async function deleteHistory(p, h) {
+        if (!confirm("Delete this history entry? This can't be undone.")) return;
+        const res = await fetch("/api/people/" + p.id + "/history/" + h.id, {
+          method: "DELETE",
+        });
+        if (!res.ok) { alert("Could not delete (" + res.status + ")."); return; }
+        await refreshDetail(p.id);
+      }
+
+      function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, (c) =>
+          ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
+        );
+      }
+
+      // ---- add / edit modal -------------------------------------------------
+      const $modalRoot = document.getElementById("modal-root");
+
+      function todayStr() {
+        // Local YYYY-MM-DD for the date input default.
+        const d = new Date();
+        const p = (n) => String(n).padStart(2, "0");
+        return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+      }
+
+      function closeModal() { $modalRoot.innerHTML = ""; }
+
+      // person == null => add; else edit. All field values are set via the DOM's
+      // `.value` (treated as text by the browser), never innerHTML, so user text
+      // can't break out of the form.
+      function openForm(person) {
+        const editing = !!person;
+        $modalRoot.innerHTML =
+          '<div class="overlay" id="overlay">' +
+            '<div class="modal" role="dialog" aria-modal="true">' +
+              "<h2>" + (editing ? "Edit person" : "Add person") + "</h2>" +
+              '<div class="err" id="ferr" style="display:none"></div>' +
+              '<div class="field"><label for="f-name">Name</label>' +
+                '<input id="f-name" maxlength="120" autocomplete="off" /></div>' +
+              '<div class="field"><label for="f-rel">Relationship</label>' +
+                '<input id="f-rel" maxlength="160" autocomplete="off" placeholder="e.g. Former colleague" /></div>' +
+              '<div class="field"><label for="f-tags">Tags</label>' +
+                '<input id="f-tags" maxlength="400" autocomplete="off" placeholder="comma separated — work, friend" /></div>' +
+              '<div class="field"><label for="f-note">Notes</label>' +
+                '<textarea id="f-note" rows="4" maxlength="4000"></textarea></div>' +
+              (editing ? "" :
+                '<div class="field"><label for="f-date">Last contacted</label>' +
+                  '<input id="f-date" type="date" />' +
+                  '<div class="hint">Defaults to today. Drives the 90-day follow-up clock.</div></div>') +
+              '<div class="modal-actions">' +
+                '<button class="iconbtn" id="f-cancel">Cancel</button>' +
+                '<button class="vessel-primary" id="f-save">' + (editing ? "Save changes" : "Add person") + "</button>" +
+              "</div>" +
+            "</div>" +
+          "</div>";
+
+        const $name = document.getElementById("f-name");
+        const $rel = document.getElementById("f-rel");
+        const $tags = document.getElementById("f-tags");
+        const $note = document.getElementById("f-note");
+        const $date = document.getElementById("f-date");
+        const $err = document.getElementById("ferr");
+
+        if (editing) {
+          $name.value = person.name || "";
+          $rel.value = person.relationship || "";
+          $tags.value = (person.tags || []).join(", ");
+          $note.value = person.note || "";
+        } else if ($date) {
+          $date.value = todayStr();
+        }
+        $name.focus();
+
+        const showErr = (m) => { $err.textContent = m; $err.style.display = "block"; };
+
+        document.getElementById("f-cancel").onclick = closeModal;
+        document.getElementById("overlay").onclick = (e) => {
+          if (e.target.id === "overlay") closeModal();
+        };
+
+        document.getElementById("f-save").onclick = async () => {
+          const name = $name.value.trim();
+          if (!name) { showErr("Name is required."); $name.focus(); return; }
+          const payload = {
+            name: name,
+            relationship: $rel.value.trim(),
+            note: $note.value,
+            // Send tags as an array; the backend normalizes/caps regardless.
+            tags: $tags.value.split(",").map((s) => s.trim()).filter(Boolean),
+          };
+          if (!editing && $date && $date.value) payload.last_contacted = $date.value;
+
+          const url = editing ? "/api/people/" + person.id : "/api/people";
+          const method = editing ? "PUT" : "POST";
+          const res = await fetch(url, {
+            method: method,
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          if (!res.ok) {
+            let msg = "Could not save (" + res.status + ").";
+            try {
+              const e = await res.json();
+              if (e && e.detail) {
+                msg = Array.isArray(e.detail)
+                  ? e.detail.map((d) => d.msg).join("; ")
+                  : String(e.detail);
+              }
+            } catch (_) {}
+            showErr(msg);
+            return;
+          }
+          const saved = await res.json();
+          closeModal();
+          await refreshList();
+          openPerson(saved.id);
+        };
+      }
+
+      // Build a <select> of the contact methods with `selected` chosen.
+      function methodSelect(id, selected) {
+        const opts = METHODS.map((m) =>
+          '<option value="' + m.id + '"' + (m.id === selected ? " selected" : "") + ">" +
+          escapeHtml(m.label) + "</option>"
+        ).join("");
+        return '<select id="' + id + '">' + opts + "</select>";
+      }
+
+      // Pull a readable message out of a non-ok JSON response (FastAPI/Pydantic).
+      async function errMsg(res, fallback) {
+        let msg = fallback + " (" + res.status + ").";
+        try {
+          const e = await res.json();
+          if (e && e.detail) {
+            msg = Array.isArray(e.detail)
+              ? e.detail.map((d) => d.msg).join("; ")
+              : String(e.detail);
+          }
+        } catch (_) {}
+        return msg;
+      }
+
+      // ---- "Log contact" modal: note + method ----
+      function openLogForm(p) {
+        $modalRoot.innerHTML =
+          '<div class="overlay" id="overlay">' +
+            '<div class="modal" role="dialog" aria-modal="true">' +
+              "<h2>Log contact</h2>" +
+              '<div class="err" id="ferr" style="display:none"></div>' +
+              '<div class="field"><label for="l-method">Method</label>' +
+                methodSelect("l-method", "email") + "</div>" +
+              '<div class="field"><label for="l-entry">Note</label>' +
+                '<input id="l-entry" maxlength="200" autocomplete="off" placeholder="e.g. Coffee, quick call…" /></div>' +
+              '<div class="modal-actions">' +
+                '<button class="iconbtn" id="l-cancel">Cancel</button>' +
+                '<button class="vessel-primary" id="l-save">Log contact</button>' +
+              "</div>" +
+            "</div>" +
+          "</div>";
+
+        const $method = document.getElementById("l-method");
+        const $entry = document.getElementById("l-entry");
+        const $err = document.getElementById("ferr");
+        $entry.focus();
+
+        document.getElementById("l-cancel").onclick = closeModal;
+        document.getElementById("overlay").onclick = (e) => {
+          if (e.target.id === "overlay") closeModal();
+        };
+
+        document.getElementById("l-save").onclick = async () => {
+          const payload = {
+            method: $method.value,
+            entry: $entry.value.trim() || "Logged contact",
+          };
+          const res = await fetch("/api/people/" + p.id + "/log", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          if (!res.ok) {
+            $err.textContent = await errMsg(res, "Could not log");
+            $err.style.display = "block";
+            return;
+          }
+          closeModal();
+          await refreshDetail(p.id);
+        };
+      }
+
+      // ---- edit a single history entry: note + method + date ----
+      function openHistoryForm(p, h) {
+        $modalRoot.innerHTML =
+          '<div class="overlay" id="overlay">' +
+            '<div class="modal" role="dialog" aria-modal="true">' +
+              "<h2>Edit history entry</h2>" +
+              '<div class="err" id="herr" style="display:none"></div>' +
+              '<div class="field"><label for="h-method">Method</label>' +
+                methodSelect("h-method", h.method) + "</div>" +
+              '<div class="field"><label for="h-entry">Note</label>' +
+                '<input id="h-entry" maxlength="200" autocomplete="off" /></div>' +
+              '<div class="field"><label for="h-date">Date</label>' +
+                '<input id="h-date" type="date" />' +
+                '<div class="hint">Most recent entry drives the 90-day follow-up clock.</div></div>' +
+              '<div class="modal-actions">' +
+                '<button class="iconbtn vessel-danger spacer" id="h-del">Delete</button>' +
+                '<button class="iconbtn" id="h-cancel">Cancel</button>' +
+                '<button class="vessel-primary" id="h-save">Save changes</button>' +
+              "</div>" +
+            "</div>" +
+          "</div>";
+
+        const $method = document.getElementById("h-method");
+        const $entry = document.getElementById("h-entry");
+        const $date = document.getElementById("h-date");
+        const $err = document.getElementById("herr");
+        $entry.value = h.entry || "";
+        // h.occurred_on is YYYY-MM-DD from the backend; safe to assign directly.
+        if (h.occurred_on) $date.value = h.occurred_on;
+        $entry.focus();
+
+        document.getElementById("h-cancel").onclick = closeModal;
+        document.getElementById("overlay").onclick = (e) => {
+          if (e.target.id === "overlay") closeModal();
+        };
+        document.getElementById("h-del").onclick = () => {
+          closeModal();
+          deleteHistory(p, h);
+        };
+
+        document.getElementById("h-save").onclick = async () => {
+          const payload = {
+            method: $method.value,
+            entry: $entry.value.trim() || "Logged contact",
+            occurred_on: $date.value || "",
+          };
+          const res = await fetch("/api/people/" + p.id + "/history/" + h.id, {
+            method: "PUT",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          if (!res.ok) {
+            $err.textContent = await errMsg(res, "Could not save");
+            $err.style.display = "block";
+            return;
+          }
+          closeModal();
+          await refreshDetail(p.id);
+        };
+      }
+
+      async function deletePerson(p) {
+        if (!confirm("Delete " + p.name + " and their history? This can't be undone.")) return;
+        const res = await fetch("/api/people/" + p.id, { method: "DELETE" });
+        if (!res.ok) { alert("Could not delete (" + res.status + ")."); return; }
+        selId = null;
+        await refreshList();
+        const next = visiblePeople();
+        if (next.length) {
+          openPerson(next[0].id);
+        } else {
+          $detail.className = "detail empty";
+          $detail.innerHTML = '<span class="vessel-muted">No people yet. Add one to begin.</span>';
+        }
+      }
+
+      async function refreshList() {
+        const data = await fetch("/api/people").then(j);
+        people = data.people;
+        followUpDays = data.follow_up_days;
+        render();
+      }
+
+      function render() {
+        $count.textContent = people.length;
+        renderChips();
+        renderRows();
+        // If the current filter hid the selection, the detail still shows the
+        // selected person — that's fine; only the list is filtered.
+        if (selId == null && visiblePeople().length) openPerson(visiblePeople()[0].id);
+      }
+
+      document.getElementById("add").onclick = () => openForm(null);
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && $modalRoot.firstChild) closeModal();
+      });
+
+      (async () => {
+        const data = await fetch("/api/people").then(j);
+        people = data.people;
+        followUpDays = data.follow_up_days;
+        render();
+        if (people.length) openPerson(people[0].id);
+      })();
+    </script>
+  </body>
+</html>

@@ -1,10 +1,27 @@
 // Ed25519 bundle signing/verification via WebCrypto (works in Node and the
-// browser). The signature covers all bundle files except signature.sig itself,
-// in a canonical (sorted, length-prefixed) encoding — so any change to any
-// file, including the manifest, breaks verification (tamper-evidence).
+// browser). The signature covers every bundle file except signature.sig AND the
+// manifest's `data` path (the mutable SQLite DB), in a canonical (sorted,
+// length-prefixed) encoding. So a change to the code/UI/manifest breaks
+// verification (tamper-evidence), but the user editing + saving their data does
+// NOT — the publisher attests to the executable parts, not the user's data. The
+// excluded path is named in the (signed) manifest, so it can't be redirected
+// without breaking the signature.
 
 const SIG_FILE = "signature.sig";
+const MANIFEST_FILE = "manifest.json";
 const PREFIX = "ed25519:";
+
+/** The manifest's `data` path (the mutable DB), excluded from the signature. */
+function dataPath(files: Record<string, Uint8Array>): string | null {
+  const m = files[MANIFEST_FILE];
+  if (!m) return null;
+  try {
+    const data = (JSON.parse(new TextDecoder().decode(m)) as { data?: unknown }).data;
+    return typeof data === "string" ? data : null;
+  } catch {
+    return null;
+  }
+}
 
 function b64(bytes: Uint8Array): string {
   let s = "";
@@ -19,10 +36,14 @@ function unb64(str: string): Uint8Array {
   return out;
 }
 
-/** Canonical bytes signed over: every file except signature.sig, name-sorted. */
+/**
+ * Canonical bytes signed over: every file except signature.sig and the
+ * manifest's data path (the mutable DB), name-sorted, length-prefixed.
+ */
 function signingMessage(files: Record<string, Uint8Array>): Uint8Array {
+  const skip = dataPath(files);
   const names = Object.keys(files)
-    .filter((n) => n !== SIG_FILE && !n.endsWith("/"))
+    .filter((n) => n !== SIG_FILE && n !== skip && !n.endsWith("/"))
     .sort();
   const enc = new TextEncoder();
   const parts: Uint8Array[] = [];

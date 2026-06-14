@@ -1,0 +1,721 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Recipe Planner</title>
+    <!-- Layout only — all colors come from the Vessel theme (--vessel-* tokens
+         + base styles injected by the host). Numbers (minutes/serves/×N) use the
+         mono token; prose uses the UI font. Toggle light/dark or the theme in the
+         host and this UI follows. -->
+    <style>
+      html, body { height: 100%; }
+      body {
+        margin: 0; padding: 0;
+        font-family: var(--vessel-font);
+        color: var(--vessel-text);
+        background: var(--vessel-bg);
+      }
+      * { box-sizing: border-box; }
+      .mono { font-family: var(--vessel-font-mono); }
+
+      .app { display: flex; flex-direction: column; height: 100vh; }
+
+      .header {
+        display: flex; align-items: center; gap: 12px;
+        padding: 15px 24px;
+        background: var(--vessel-surface);
+        border-bottom: 1px solid var(--vessel-border);
+      }
+      .header .title { font-weight: 600; font-size: 16px; letter-spacing: -0.01em; }
+      .header .sub { font-size: 11.5px; color: var(--vessel-text-muted); }
+      .header svg { color: var(--vessel-text-muted); flex: 0 0 auto; }
+
+      .body {
+        flex: 1; min-height: 0;
+        display: grid; grid-template-columns: 286px 1fr 264px;
+      }
+
+      .col { display: flex; flex-direction: column; min-height: 0; }
+      .col.recipes { border-right: 1px solid var(--vessel-border); }
+      .col.shopping {
+        border-left: 1px solid var(--vessel-border);
+        background: var(--vessel-surface);
+      }
+
+      .section-label {
+        font-size: 10px; font-weight: 600; letter-spacing: 0.07em;
+        text-transform: uppercase; color: var(--vessel-text-muted);
+      }
+
+      /* recipes */
+      .recipes .head { padding: 12px 16px 8px; }
+      .recipes-head { display: flex; align-items: center; gap: 8px; }
+      .recipes-head .spacer { flex: 1; }
+      .add-recipe {
+        margin-left: auto; flex: 0 0 auto;
+        width: 22px; height: 22px; padding: 0; border-radius: 6px;
+        border: 1px solid var(--vessel-border);
+        background: var(--vessel-bg); color: var(--vessel-text-muted);
+        cursor: pointer; font: inherit; line-height: 0;
+        display: flex; align-items: center; justify-content: center;
+        transition: background .12s, border-color .12s, color .12s;
+      }
+      .add-recipe:hover {
+        background: color-mix(in srgb, var(--vessel-text) 6%, transparent);
+        border-color: color-mix(in srgb, var(--vessel-text) 22%, var(--vessel-border));
+        color: var(--vessel-text);
+      }
+      .recipe-scroll {
+        flex: 1; min-height: 0; overflow-y: auto;
+        padding: 0 12px 12px;
+        display: flex; flex-direction: column; gap: 8px;
+      }
+      .recipe-card {
+        text-align: left; width: 100%;
+        padding: 11px 13px;
+        border-radius: 10px;
+        border: 1px solid var(--vessel-border);
+        background: var(--vessel-bg);
+        color: var(--vessel-text);
+        cursor: pointer; font: inherit;
+        transition: background .12s, border-color .12s;
+      }
+      .recipe-card:hover {
+        background: color-mix(in srgb, var(--vessel-text) 6%, transparent);
+        border-color: color-mix(in srgb, var(--vessel-text) 22%, var(--vessel-border));
+      }
+      .recipe-card { position: relative; }
+      .recipe-card .name { font-size: 13.5px; font-weight: 500; padding-right: 22px; }
+      .recipe-card .edit {
+        position: absolute; top: 8px; right: 8px;
+        width: 22px; height: 22px; padding: 0; border-radius: 6px;
+        border: none; background: transparent; color: var(--vessel-text-muted);
+        cursor: pointer; line-height: 0; opacity: 0;
+        display: flex; align-items: center; justify-content: center;
+        transition: opacity .12s, background .12s, color .12s;
+      }
+      .recipe-card:hover .edit { opacity: 1; }
+      .recipe-card .edit:hover {
+        background: color-mix(in srgb, var(--vessel-text) 10%, transparent);
+        color: var(--vessel-text);
+      }
+      .recipe-card .meta { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+      .recipe-card .stat { font-size: 11px; color: var(--vessel-text-muted); }
+      .recipe-card .spacer { flex: 1; }
+      .chip {
+        font-size: 10px;
+        color: color-mix(in srgb, var(--vessel-text) 78%, var(--vessel-text-muted));
+        background: color-mix(in srgb, var(--vessel-text) 8%, transparent);
+        border-radius: 4px; padding: 2px 6px;
+      }
+
+      /* week */
+      .week .head {
+        display: flex; align-items: baseline; gap: 10px;
+        padding: 14px 22px 8px;
+      }
+      .week .head .title { font-size: 13px; font-weight: 600; }
+      .week .head .sub { font-size: 11px; color: var(--vessel-text-muted); }
+      .week-scroll {
+        flex: 1; min-height: 0; overflow-y: auto;
+        padding: 4px 22px 18px;
+        display: flex; flex-direction: column; gap: 8px;
+      }
+      .day-row { display: flex; align-items: flex-start; gap: 14px; min-height: 50px; padding: 4px; }
+      .day-name { width: 34px; flex: 0 0 34px; font-size: 12px; color: var(--vessel-text-muted); padding-top: 12px; }
+      .day-meals { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+      .planned {
+        display: flex; align-items: center; gap: 12px;
+        padding: 11px 14px; border-radius: 10px;
+        border: 1px solid color-mix(in srgb, var(--vessel-accent) 45%, transparent);
+        background: color-mix(in srgb, var(--vessel-accent) 12%, transparent);
+        text-align: left; color: var(--vessel-text); font: inherit;
+      }
+      .planned .accent-ico { color: var(--vessel-accent); flex: 0 0 auto; }
+      .planned .info { flex: 1; }
+      .planned .info .name { font-size: 13.5px; font-weight: 500; }
+      .planned .info .stat { font-size: 10.5px; color: var(--vessel-text-muted); margin-top: 2px; }
+      .planned .remove {
+        flex: 0 0 auto; width: 22px; height: 22px; padding: 0; border-radius: 6px;
+        border: none; background: transparent; color: var(--vessel-text-muted);
+        cursor: pointer; line-height: 0;
+        display: flex; align-items: center; justify-content: center;
+        transition: background .12s, color .12s;
+      }
+      .planned .remove:hover {
+        background: color-mix(in srgb, var(--vessel-danger) 12%, transparent);
+        color: var(--vessel-danger);
+      }
+      /* The always-present "+ Add a meal" slot is a themed select. */
+      .add-meal-select {
+        width: 100%; font-size: 12.5px;
+        color: var(--vessel-text-muted);
+        background: transparent;
+        border: 1px dashed color-mix(in srgb, var(--vessel-text) 22%, var(--vessel-border));
+        border-radius: 10px; padding: 9px 12px;
+      }
+      .add-meal-select:hover {
+        border-color: color-mix(in srgb, var(--vessel-accent) 55%, var(--vessel-border));
+      }
+
+      /* shopping */
+      .shopping .head {
+        display: flex; align-items: center; gap: 8px;
+        padding: 14px 18px 10px;
+      }
+      .shopping .head svg { color: var(--vessel-text-muted); flex: 0 0 auto; }
+      .shopping .head .title { font-size: 13px; font-weight: 600; }
+      .shopping .head .count { font-size: 11px; color: var(--vessel-text-muted); }
+      .shopping .head .spacer { flex: 1; }
+      .shop-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 18px 16px; }
+      .aisle { margin-top: 12px; }
+      .aisle > .section-label { font-size: 9.5px; margin-bottom: 6px; }
+      .shop-item {
+        display: flex; align-items: center; gap: 10px; width: 100%;
+        text-align: left; padding: 6px 4px;
+        border: none; background: transparent; cursor: pointer; font: inherit;
+        color: var(--vessel-text);
+      }
+      .box {
+        width: 16px; height: 16px; border-radius: 5px; flex: 0 0 auto;
+        border: 1.5px solid color-mix(in srgb, var(--vessel-text) 30%, var(--vessel-border));
+        background: transparent;
+        display: flex; align-items: center; justify-content: center;
+        color: var(--vessel-accent-text);
+      }
+      .shop-item.on .box { border-color: var(--vessel-accent); background: var(--vessel-accent); }
+      .shop-item .label { flex: 1; font-size: 12.5px; }
+      .shop-item.on .label { color: var(--vessel-text-muted); text-decoration: line-through; }
+      .shop-item .qty { font-size: 10.5px; color: var(--vessel-text-muted); }
+      .shop-empty {
+        padding: 30px 4px; font-size: 12px; color: var(--vessel-text-muted); text-align: center;
+      }
+
+      /* modal editor */
+      .overlay {
+        position: fixed; inset: 0;
+        background: color-mix(in srgb, var(--vessel-text) 38%, transparent);
+        display: flex; align-items: center; justify-content: center;
+        padding: 24px; z-index: 50;
+      }
+      .overlay[hidden] { display: none; }
+      .modal {
+        width: 100%; max-width: 440px; max-height: 100%;
+        display: flex; flex-direction: column;
+        background: var(--vessel-bg);
+        border: 1px solid var(--vessel-border);
+        border-radius: var(--vessel-radius, 12px);
+        overflow: hidden;
+      }
+      .modal-head {
+        display: flex; align-items: center; gap: 8px;
+        padding: 14px 16px;
+        background: var(--vessel-surface);
+        border-bottom: 1px solid var(--vessel-border);
+      }
+      .modal-head .title { font-size: 14px; font-weight: 600; }
+      .modal-head .spacer { flex: 1; }
+      .icon-btn {
+        width: 26px; height: 26px; padding: 0; border-radius: 6px;
+        border: none; background: transparent; color: var(--vessel-text-muted);
+        cursor: pointer; line-height: 0;
+        display: flex; align-items: center; justify-content: center;
+      }
+      .icon-btn:hover {
+        background: color-mix(in srgb, var(--vessel-text) 10%, transparent);
+        color: var(--vessel-text);
+      }
+      .modal-body {
+        flex: 1; min-height: 0; overflow-y: auto;
+        padding: 16px; display: flex; flex-direction: column; gap: 6px;
+      }
+      .field-label {
+        font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
+        color: var(--vessel-text-muted); margin-top: 8px;
+      }
+      .field-label .hint { font-weight: 400; text-transform: none; letter-spacing: 0; }
+      .modal-body input, .modal-body select {
+        width: 100%; font: inherit; font-size: 13px;
+        padding: 8px 10px; border-radius: 8px;
+        border: 1px solid var(--vessel-border);
+        background: var(--vessel-field, var(--vessel-surface));
+        color: var(--vessel-text);
+      }
+      .modal-body input:focus, .modal-body select:focus {
+        outline: none;
+        border-color: var(--vessel-accent);
+      }
+      .field-row { display: flex; gap: 10px; }
+      .field-col { flex: 1; display: flex; flex-direction: column; }
+      .ing-head { display: flex; align-items: center; margin-top: 12px; }
+      .ing-head .spacer { flex: 1; }
+      .ing-list { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+      .ing-row { display: flex; align-items: center; gap: 6px; }
+      .ing-row .item { flex: 1; }
+      .ing-row .aisle { flex: 0 0 110px; }
+      .ing-row .rm {
+        flex: 0 0 auto; width: 28px; height: 28px; padding: 0; border-radius: 6px;
+        border: 1px solid var(--vessel-border); background: transparent;
+        color: var(--vessel-text-muted); cursor: pointer; line-height: 0;
+        display: flex; align-items: center; justify-content: center;
+      }
+      .ing-row .rm:hover {
+        border-color: color-mix(in srgb, var(--vessel-danger) 50%, var(--vessel-border));
+        color: var(--vessel-danger);
+      }
+      .ing-empty { font-size: 12px; color: var(--vessel-text-muted); padding: 4px 0; }
+      .link-btn {
+        font: inherit; font-size: 12px; font-weight: 500;
+        border: none; background: transparent; color: var(--vessel-accent);
+        cursor: pointer; padding: 2px 4px;
+      }
+      .link-btn:hover { text-decoration: underline; }
+      .form-error {
+        margin-top: 10px; font-size: 12px;
+        color: var(--vessel-danger);
+        background: color-mix(in srgb, var(--vessel-danger) 10%, transparent);
+        border: 1px solid color-mix(in srgb, var(--vessel-danger) 35%, transparent);
+        border-radius: 8px; padding: 8px 10px;
+      }
+      .form-error[hidden] { display: none; }
+      .modal-foot {
+        display: flex; align-items: center; gap: 8px;
+        padding: 12px 16px;
+        background: var(--vessel-surface);
+        border-top: 1px solid var(--vessel-border);
+      }
+      .modal-foot .spacer { flex: 1; }
+      .primary-btn, .ghost-btn, .del-btn {
+        font: inherit; font-size: 13px; font-weight: 500;
+        padding: 8px 14px; border-radius: 8px; cursor: pointer;
+        border: 1px solid var(--vessel-border);
+      }
+      .primary-btn {
+        background: var(--vessel-accent); color: var(--vessel-accent-text);
+        border-color: var(--vessel-accent);
+      }
+      .primary-btn:hover { background: color-mix(in srgb, var(--vessel-text) 14%, var(--vessel-accent)); }
+      .ghost-btn { background: transparent; color: var(--vessel-text); }
+      .ghost-btn:hover { background: color-mix(in srgb, var(--vessel-text) 6%, transparent); }
+      .del-btn { background: transparent; color: var(--vessel-danger); border-color: transparent; }
+      .del-btn:hover { background: color-mix(in srgb, var(--vessel-danger) 10%, transparent); }
+      .del-btn[hidden] { display: none; }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <div class="header">
+        <!-- utensils -->
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M7 3v18M5 3v5.5M9 3v5.5" />
+          <path d="M16.5 3c-1.6 0-2.6 2.4-2.6 5.4 0 2.4 1.1 3.1 2.6 3.1V21" />
+        </svg>
+        <span class="title">Recipe box</span>
+        <span class="sub mono" id="header-sub"></span>
+      </div>
+
+      <div class="body">
+        <div class="col recipes">
+          <div class="head recipes-head">
+            <span class="section-label">Recipes · tap to plan</span>
+            <button class="add-recipe" id="add-recipe" title="Add a recipe" aria-label="Add a recipe"></button>
+          </div>
+          <div class="recipe-scroll" id="recipe-list"></div>
+        </div>
+
+        <div class="col week">
+          <div class="head">
+            <span class="title">This week</span>
+            <span class="sub mono" id="week-sub"></span>
+          </div>
+          <div class="week-scroll" id="week-list"></div>
+        </div>
+
+        <div class="col shopping">
+          <div class="head">
+            <!-- cart -->
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="9.5" cy="20" r="1.3" /><circle cx="17" cy="20" r="1.3" />
+              <path d="M3 4h2.2l2 11h10l1.8-8H6" />
+            </svg>
+            <span class="title">Shopping list</span>
+            <span class="spacer"></span>
+            <span class="count mono" id="shop-count"></span>
+          </div>
+          <div class="shop-scroll" id="shop-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recipe editor modal -->
+    <div class="overlay" id="overlay" hidden>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div class="modal-head">
+          <span class="title" id="modal-title">New recipe</span>
+          <span class="spacer"></span>
+          <button class="icon-btn" id="modal-close" title="Close" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <label class="field-label" for="f-name">Name</label>
+          <input id="f-name" type="text" maxlength="120" placeholder="Recipe name" autocomplete="off" />
+
+          <div class="field-row">
+            <div class="field-col">
+              <label class="field-label" for="f-time">Time (min)</label>
+              <input id="f-time" class="mono" type="number" min="1" max="100000" inputmode="numeric" />
+            </div>
+            <div class="field-col">
+              <label class="field-label" for="f-serves">Serves</label>
+              <input id="f-serves" class="mono" type="number" min="1" max="10000" inputmode="numeric" />
+            </div>
+          </div>
+
+          <label class="field-label" for="f-tags">Tags <span class="hint">comma-separated</span></label>
+          <input id="f-tags" type="text" maxlength="200" placeholder="veg, quick" autocomplete="off" />
+
+          <div class="ing-head">
+            <span class="field-label">Ingredients</span>
+            <span class="spacer"></span>
+            <button class="link-btn" id="add-ing" type="button">+ Add ingredient</button>
+          </div>
+          <div class="ing-list" id="ing-list"></div>
+
+          <div class="form-error" id="form-error" hidden></div>
+        </div>
+        <div class="modal-foot">
+          <button class="del-btn" id="modal-delete" type="button" hidden>Delete recipe</button>
+          <span class="spacer"></span>
+          <button class="ghost-btn" id="modal-cancel" type="button">Cancel</button>
+          <button class="primary-btn" id="modal-save" type="button">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const j = (r) => r.json();
+      let state = null;
+
+      const ICON_UTENSILS =
+        '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+        '<path d="M7 3v18M5 3v5.5M9 3v5.5"/><path d="M16.5 3c-1.6 0-2.6 2.4-2.6 5.4 0 2.4 1.1 3.1 2.6 3.1V21"/></svg>';
+      const ICON_CLOSE =
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+        '<line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>';
+      const ICON_CHECK =
+        '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+        '<path d="M5 12.5l4.2 4.2L19 7"/></svg>';
+      const ICON_PLUS =
+        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+        '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
+      const ICON_EDIT =
+        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+        '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
+
+      const el = (tag, cls) => { const e = document.createElement(tag); if (cls) e.className = cls; return e; };
+
+      // First day with no meals (for tap-to-plan); falls back to the last day.
+      function firstOpenDay() {
+        const open = state.plan.find((d) => d.meals.length === 0);
+        return open ? open.day_index : 6;
+      }
+
+      // The always-present "+ Add a meal" slot for a day. It's a themed <select>
+      // whose placeholder option reads "+ Add a meal"; picking a recipe plans it
+      // onto this day. textContent only — no HTML injection from recipe names.
+      function addMealControl(dayIndex, byId) {
+        const sel = el("select", "add-meal-select");
+        sel.setAttribute("aria-label", "Add a meal to this day");
+        const placeholder = el("option");
+        placeholder.value = ""; placeholder.textContent = "+ Add a meal";
+        placeholder.disabled = true; placeholder.selected = true;
+        sel.append(placeholder);
+        for (const r of state.recipes) {
+          const opt = el("option");
+          opt.value = String(r.id);
+          opt.textContent = r.name; // textContent: no HTML injection
+          sel.append(opt);
+        }
+        sel.onchange = () => {
+          const rid = parseInt(sel.value, 10);
+          if (Number.isInteger(rid)) planRecipe(dayIndex, rid);
+        };
+        return sel;
+      }
+
+      function render() {
+        const { recipes, plan, shopping, checked_count, total_items } = state;
+        const mealCount = plan.reduce((n, d) => n + d.meals.length, 0);
+        const plannedDays = plan.filter((d) => d.meals.length > 0).length;
+        const byId = Object.fromEntries(recipes.map((r) => [r.id, r]));
+
+        document.getElementById("header-sub").textContent =
+          recipes.length + " recipes · weekly plan";
+        document.getElementById("week-sub").textContent =
+          mealCount + (mealCount === 1 ? " meal · " : " meals · ") + plannedDays + " of 7 days";
+        document.getElementById("shop-count").textContent = checked_count + "/" + total_items;
+
+        // recipe list
+        const $rl = document.getElementById("recipe-list");
+        $rl.innerHTML = "";
+        for (const r of recipes) {
+          const card = el("button", "recipe-card");
+          const name = el("div", "name"); name.textContent = r.name;
+          const meta = el("div", "meta");
+          const stat = el("span", "stat mono"); stat.textContent = r.time + "m · serves " + r.serves;
+          const spacer = el("div", "spacer");
+          meta.append(stat, spacer);
+          for (const tag of r.tags.slice(0, 2)) {
+            const c = el("span", "chip"); c.textContent = tag; meta.append(c);
+          }
+          const edit = el("button", "edit");
+          edit.title = "Edit recipe";
+          edit.setAttribute("aria-label", "Edit recipe");
+          edit.innerHTML = ICON_EDIT;
+          edit.onclick = (ev) => { ev.stopPropagation(); openEditor(r.id); };
+          card.append(name, meta, edit);
+          // Tap-to-plan: drop onto the first empty day, else the last day.
+          card.onclick = () => planRecipe(firstOpenDay(), r.id);
+          $rl.append(card);
+        }
+
+        // week — each day stacks its planned meals (each removable) plus an
+        // always-present "+ Add a meal" slot.
+        const $wl = document.getElementById("week-list");
+        $wl.innerHTML = "";
+        plan.forEach((d) => {
+          const row = el("div", "day-row");
+          const dn = el("span", "day-name mono"); dn.textContent = d.day;
+          const meals = el("div", "day-meals");
+          for (const m of d.meals) {
+            const card = el("div", "planned");
+            const ico = el("span", "accent-ico"); ico.innerHTML = ICON_UTENSILS;
+            const info = el("div", "info");
+            const nm = el("div", "name"); nm.textContent = m.name;
+            const st = el("div", "stat mono"); st.textContent = m.time + "m · serves " + m.serves;
+            info.append(nm, st);
+            const rm = el("button", "remove");
+            rm.title = "Remove meal";
+            rm.setAttribute("aria-label", "Remove meal");
+            rm.innerHTML = ICON_CLOSE;
+            rm.onclick = () => removeMeal(m.plan_id);
+            card.append(ico, info, rm);
+            meals.append(card);
+          }
+          meals.append(addMealControl(d.day_index, byId));
+          row.append(dn, meals);
+          $wl.append(row);
+        });
+
+        // shopping
+        const $sl = document.getElementById("shop-list");
+        $sl.innerHTML = "";
+        if (total_items === 0) {
+          const e = el("div", "shop-empty");
+          e.textContent = "Plan a meal to build the list.";
+          $sl.append(e);
+        } else {
+          for (const group of shopping) {
+            const sec = el("div", "aisle");
+            const lbl = el("div", "section-label"); lbl.textContent = group.aisle;
+            sec.append(lbl);
+            for (const x of group.items) {
+              const btn = el("button", "shop-item" + (x.checked ? " on" : ""));
+              const box = el("span", "box");
+              if (x.checked) box.innerHTML = ICON_CHECK;
+              const label = el("span", "label"); label.textContent = x.item;
+              btn.append(box, label);
+              if (x.n > 1) {
+                const qty = el("span", "qty mono"); qty.textContent = "×" + x.n;
+                btn.append(qty);
+              }
+              btn.onclick = () => toggleCheck(x.key);
+              sec.append(btn);
+            }
+            $sl.append(sec);
+          }
+        }
+      }
+
+      async function load() {
+        state = await fetch("/api/state").then(j);
+        render();
+      }
+
+      async function planRecipe(dayIndex, recipeId) {
+        state = await fetch("/api/plan", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ day_index: dayIndex, recipe_id: recipeId }),
+        }).then(j);
+        render();
+      }
+
+      async function removeMeal(planId) {
+        state = await fetch("/api/plan/meal/" + planId, { method: "DELETE" }).then(j);
+        render();
+      }
+
+      async function toggleCheck(itemKey) {
+        state = await fetch("/api/check", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ item_key: itemKey }),
+        }).then(j);
+        render();
+      }
+
+      // ---- recipe editor (modal) ----
+      const $overlay = document.getElementById("overlay");
+      const $error = document.getElementById("form-error");
+      let editingId = null; // null = creating a new recipe
+
+      function aisleOptions(selected) {
+        const sel = el("select", "aisle");
+        const aisles = (state && state.aisles) || ["Produce", "Meat", "Dairy", "Pantry", "Frozen"];
+        for (const a of aisles) {
+          const opt = el("option");
+          opt.value = a; opt.textContent = a; // textContent: no HTML injection
+          if (a === selected) opt.selected = true;
+          sel.append(opt);
+        }
+        return sel;
+      }
+
+      function addIngRow(item, aisle) {
+        const $list = document.getElementById("ing-list");
+        const empty = $list.querySelector(".ing-empty");
+        if (empty) empty.remove();
+        const row = el("div", "ing-row");
+        const itemInput = el("input", "item");
+        itemInput.type = "text"; itemInput.maxLength = 80;
+        itemInput.placeholder = "Ingredient";
+        itemInput.value = item || "";
+        const sel = aisleOptions(aisle);
+        const rm = el("button", "rm");
+        rm.type = "button"; rm.title = "Remove"; rm.setAttribute("aria-label", "Remove ingredient");
+        rm.innerHTML = ICON_CLOSE;
+        rm.onclick = () => { row.remove(); ensureIngPlaceholder(); };
+        row.append(itemInput, sel, rm);
+        $list.append(row);
+        return itemInput;
+      }
+
+      function ensureIngPlaceholder() {
+        const $list = document.getElementById("ing-list");
+        if (!$list.querySelector(".ing-row") && !$list.querySelector(".ing-empty")) {
+          const e = el("div", "ing-empty");
+          e.textContent = "No ingredients yet.";
+          $list.append(e);
+        }
+      }
+
+      function openCreator() {
+        editingId = null;
+        document.getElementById("modal-title").textContent = "New recipe";
+        document.getElementById("f-name").value = "";
+        document.getElementById("f-time").value = "";
+        document.getElementById("f-serves").value = "";
+        document.getElementById("f-tags").value = "";
+        document.getElementById("ing-list").innerHTML = "";
+        ensureIngPlaceholder();
+        document.getElementById("modal-delete").hidden = true;
+        $error.hidden = true;
+        $overlay.hidden = false;
+        document.getElementById("f-name").focus();
+      }
+
+      async function openEditor(id) {
+        const r = await fetch("/api/recipes/" + id).then(j);
+        editingId = r.id;
+        document.getElementById("modal-title").textContent = "Edit recipe";
+        document.getElementById("f-name").value = r.name;
+        document.getElementById("f-time").value = r.time;
+        document.getElementById("f-serves").value = r.serves;
+        document.getElementById("f-tags").value = r.tags.join(", ");
+        document.getElementById("ing-list").innerHTML = "";
+        for (const ing of r.ingredients) addIngRow(ing.item, ing.aisle);
+        ensureIngPlaceholder();
+        document.getElementById("modal-delete").hidden = false;
+        $error.hidden = true;
+        $overlay.hidden = false;
+        document.getElementById("f-name").focus();
+      }
+
+      function closeEditor() { $overlay.hidden = true; }
+
+      function collectForm() {
+        const name = document.getElementById("f-name").value.trim();
+        const time = parseInt(document.getElementById("f-time").value, 10);
+        const serves = parseInt(document.getElementById("f-serves").value, 10);
+        const tags = document.getElementById("f-tags").value
+          .split(",").map((t) => t.trim()).filter(Boolean);
+        const ingredients = [];
+        for (const row of document.querySelectorAll("#ing-list .ing-row")) {
+          const item = row.querySelector(".item").value.trim();
+          const aisle = row.querySelector(".aisle").value;
+          if (item) ingredients.push({ item, aisle });
+        }
+        return { name, time, serves, tags, ingredients };
+      }
+
+      function validate(form) {
+        if (!form.name) return "Name is required.";
+        if (!Number.isInteger(form.time) || form.time <= 0) return "Time must be a positive whole number.";
+        if (!Number.isInteger(form.serves) || form.serves <= 0) return "Serves must be a positive whole number.";
+        return null;
+      }
+
+      async function saveRecipe() {
+        const form = collectForm();
+        const err = validate(form);
+        if (err) { $error.textContent = err; $error.hidden = false; return; }
+        const url = editingId == null ? "/api/recipes" : "/api/recipes/" + editingId;
+        const method = editingId == null ? "POST" : "PUT";
+        const res = await fetch(url, {
+          method,
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(form),
+        });
+        if (!res.ok) {
+          $error.textContent = "Could not save — check the fields and try again.";
+          $error.hidden = false;
+          return;
+        }
+        state = await res.json();
+        closeEditor();
+        render();
+      }
+
+      async function deleteRecipe() {
+        if (editingId == null) return;
+        const res = await fetch("/api/recipes/" + editingId, { method: "DELETE" });
+        if (!res.ok) {
+          $error.textContent = "Could not delete.";
+          $error.hidden = false;
+          return;
+        }
+        state = await res.json();
+        closeEditor();
+        render();
+      }
+
+      document.getElementById("add-recipe").innerHTML = ICON_PLUS;
+      document.getElementById("add-recipe").onclick = openCreator;
+      document.getElementById("modal-close").innerHTML = ICON_CLOSE;
+      document.getElementById("modal-close").onclick = closeEditor;
+      document.getElementById("modal-cancel").onclick = closeEditor;
+      document.getElementById("modal-save").onclick = saveRecipe;
+      document.getElementById("modal-delete").onclick = deleteRecipe;
+      document.getElementById("add-ing").onclick = () => addIngRow("", "Produce").focus();
+      $overlay.onclick = (ev) => { if (ev.target === $overlay) closeEditor(); };
+      document.addEventListener("keydown", (ev) => {
+        if (ev.key === "Escape" && !$overlay.hidden) closeEditor();
+      });
+
+      load();
+    </script>
+  </body>
+</html>

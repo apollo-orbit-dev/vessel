@@ -64,6 +64,11 @@ hardcode colors; rely on the base styles or use `var(--vessel-…)`. Tokens:
 `manifest.theme` to its path; light/dark stays user-controlled. `base_styles:
 false` opts out of the base styles.
 
+**Gotcha — icon-only buttons:** the base stylesheet sets `button { padding: 8px
+14px; }`. A fixed-size icon-only `<button>` (e.g. `width:22px;height:22px`) with no
+padding override collapses its content box to 0 under `box-sizing:border-box`, so
+the icon renders invisibly. Always set `padding: 0` on small icon-only buttons.
+
 ## Complete minimal example
 **`manifest.json`**
 ```json

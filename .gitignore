@@ -1,6 +1,9 @@
 # --- Secrets ---
 .env
 .env.*.local
+# Bundle signing keys: never commit secret keys; the .pub is shareable.
+*.key
+examples/.keys/*.key
 
 # --- Node / SDK / host build ---
 node_modules/
@@ -23,8 +26,13 @@ __pycache__/
 # Keep hand-authored example/fixture bundles under tests/fixtures/.
 *.vessel
 !tests/fixtures/**/*.vessel
+# Ship the example tools as ready-to-download bundles (Phase 12).
+!examples/**/*.vessel
 
 # --- OS / IDE ---
 .DS_Store
 Thumbs.db
 .idea/
+# Windows mark-of-the-web alternate-data-stream cruft (WSL)
+*:Zone.Identifier
+*Zone.Identifier

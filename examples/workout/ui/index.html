@@ -1,0 +1,769 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Workout Log</title>
+    <!-- Layout only — every color comes from the Vessel theme (--vessel-* tokens
+         + the host's classless base styles). Toggle light/dark or the theme in
+         the host and this UI follows. Numbers are set in --vessel-font-mono;
+         prose/labels in --vessel-font.
+
+         Weights are stored canonically in kg; this UI converts to the selected
+         unit (kg | lb) for display and converts entered values back to kg before
+         saving. The day being logged is selected by the date control; the chart
+         aggregates volume across days by ISO week. Routines are reusable
+         templates applied to the selected day. -->
+    <style>
+      html, body { height: 100%; }
+      body { margin: 0; padding: 0; color: var(--vessel-text); background: var(--vessel-bg); }
+      .app { display: flex; flex-direction: column; height: 100vh; }
+
+      /* header */
+      .header {
+        display: flex; align-items: baseline; gap: 12px;
+        padding: 16px 26px; background: var(--vessel-surface);
+        border-bottom: 1px solid var(--vessel-border);
+      }
+      .header .icon { align-self: center; color: var(--vessel-text-muted); display: flex; }
+      .header .title { font: 600 16px var(--vessel-font); letter-spacing: -0.01em; }
+      .header .meta { font: 11.5px var(--vessel-font-mono); color: var(--vessel-text-muted); }
+      .header .spacer { flex: 1; }
+      .header-tools { display: inline-flex; align-items: center; gap: 12px; align-self: center; }
+
+      /* date control */
+      .date-ctl { display: inline-flex; align-items: center; gap: 4px; }
+      .date-ctl input[type="date"] {
+        height: 28px; padding: 0 8px; box-sizing: border-box;
+        font: 12.5px var(--vessel-font-mono);
+      }
+
+      /* unit toggle (segmented) */
+      .unit-toggle {
+        display: inline-flex; border: 1px solid var(--vessel-border);
+        border-radius: 7px; overflow: hidden;
+      }
+      .unit-toggle button {
+        height: 28px; padding: 0 11px; border: 0; background: transparent;
+        color: var(--vessel-text-muted); cursor: pointer;
+        font: 600 11.5px var(--vessel-font-mono);
+      }
+      .unit-toggle button.on {
+        background: var(--vessel-accent); color: var(--vessel-accent-text);
+      }
+      .unit-toggle button:not(.on):hover {
+        background: color-mix(in srgb, var(--vessel-text) 8%, transparent);
+        color: var(--vessel-text);
+      }
+
+      /* small icon-only buttons that sit on surfaces */
+      .icon-btn {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 26px; height: 26px; padding: 0; border-radius: 6px;
+        border: 1px solid transparent; background: transparent;
+        color: var(--vessel-text-muted); cursor: pointer;
+      }
+      .icon-btn:hover { background: color-mix(in srgb, var(--vessel-text) 8%, transparent); color: var(--vessel-text); }
+      .icon-btn.danger:hover { color: var(--vessel-danger); }
+      .icon-btn svg { display: block; }
+
+      /* body grid */
+      .body { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 290px; }
+      .lifts { overflow-y: auto; padding: 20px 26px; }
+
+      /* routine bar (applies a template to the selected day) */
+      .routine-bar {
+        display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+        margin-bottom: 18px; padding-bottom: 16px;
+        border-bottom: 1px solid var(--vessel-border);
+      }
+      .routine-bar .label {
+        font: 600 10.5px var(--vessel-font); letter-spacing: 0.06em;
+        text-transform: uppercase; color: var(--vessel-text-muted);
+      }
+      .routine-bar select { height: 28px; padding: 0 8px; box-sizing: border-box; font: 12.5px var(--vessel-font); }
+      .routine-bar button { height: 28px; padding: 0 12px; font: 12.5px var(--vessel-font); cursor: pointer; }
+      .routine-bar .spacer { flex: 1; }
+
+      .empty-day {
+        margin: 6px 0 20px; padding: 14px 0;
+        font: 12.5px var(--vessel-font); color: var(--vessel-text-muted);
+      }
+
+      .lift { margin-bottom: 22px; }
+      .lift-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+      .lift-name { font: 600 14.5px var(--vessel-font); color: var(--vessel-text); }
+      .lift-target { font: 11px var(--vessel-font-mono); color: var(--vessel-text-muted); }
+      .lift-head .spacer { flex: 1; }
+      .lift-best { font: 11px var(--vessel-font-mono); color: var(--vessel-text-muted); }
+      .lift-actions { display: inline-flex; gap: 2px; align-self: center; }
+
+      .sets { display: flex; flex-direction: column; gap: 6px; }
+      .set-row {
+        display: grid; grid-template-columns: 28px 1fr 70px 26px; gap: 12px;
+        align-items: center; min-height: 36px; padding: 0 12px;
+        border-radius: 8px; background: var(--vessel-surface);
+        border: 1px solid var(--vessel-border);
+      }
+      .set-idx { font: 11px var(--vessel-font-mono); color: var(--vessel-text-muted); }
+      .set-val { font: 13.5px var(--vessel-font-mono); color: var(--vessel-text); letter-spacing: -0.01em; cursor: text; }
+      .set-val .reps { color: var(--vessel-text-muted); }
+      .pr {
+        justify-self: end; display: inline-flex; align-items: center; gap: 4px;
+        height: 19px; padding: 0 7px; border-radius: 4px;
+        background: color-mix(in srgb, var(--vessel-accent) 10%, transparent);
+        border: 1px solid color-mix(in srgb, var(--vessel-accent) 30%, transparent);
+        font: 600 10.5px var(--vessel-font); color: var(--vessel-accent);
+      }
+
+      /* inline set editor (weight × reps) */
+      .set-edit { display: inline-flex; align-items: center; gap: 7px; }
+      .set-edit input {
+        width: 64px; height: 24px; padding: 0 7px; box-sizing: border-box;
+        font: 13px var(--vessel-font-mono); text-align: right;
+      }
+      .set-edit .times { font: 12px var(--vessel-font-mono); color: var(--vessel-text-muted); }
+      .set-edit .reps-in { width: 44px; text-align: right; }
+      .set-edit .unit { font: 11px var(--vessel-font-mono); color: var(--vessel-text-muted); }
+
+      .add-set {
+        display: inline-flex; align-items: center; gap: 6px; margin-top: 8px;
+        padding: 5px 9px; border-radius: 7px; border: 1px solid transparent;
+        background: transparent; color: var(--vessel-text-muted); cursor: pointer;
+        font: 12.5px var(--vessel-font);
+      }
+      .add-set:hover { background: color-mix(in srgb, var(--vessel-text) 6%, transparent); }
+      .add-set svg { display: block; }
+
+      .add-exercise {
+        display: inline-flex; align-items: center; gap: 6px; margin-top: 6px;
+        padding: 7px 11px; border-radius: 7px;
+        border: 1px dashed var(--vessel-border);
+        background: transparent; color: var(--vessel-text-muted); cursor: pointer;
+        font: 12.5px var(--vessel-font);
+      }
+      .add-exercise:hover { background: color-mix(in srgb, var(--vessel-text) 5%, transparent); color: var(--vessel-text); }
+      .add-exercise svg { display: block; }
+
+      /* lightweight inline edit forms (exercise / session header / routines) */
+      .edit-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+      .edit-form input { height: 28px; padding: 0 8px; box-sizing: border-box; font: 13px var(--vessel-font); }
+      .edit-form .name-in { width: 200px; }
+      .edit-form .target-in { width: 130px; font-family: var(--vessel-font-mono); }
+      .edit-form button { height: 28px; padding: 0 12px; font: 12.5px var(--vessel-font); cursor: pointer; }
+
+      /* routine editor (modal-ish inline card) */
+      .routine-editor { margin-bottom: 20px; padding: 16px; border-radius: var(--vessel-radius); }
+      .routine-editor h3 { margin: 0 0 12px; font: 600 13px var(--vessel-font); }
+      .routine-editor .row { display: grid; grid-template-columns: 1fr 130px 26px; gap: 8px; align-items: center; margin-bottom: 8px; }
+      .routine-editor .row input { height: 28px; padding: 0 8px; box-sizing: border-box; font: 13px var(--vessel-font); width: 100%; }
+      .routine-editor .row .target-in { font-family: var(--vessel-font-mono); }
+      .routine-editor .rname { width: 240px; height: 28px; padding: 0 8px; box-sizing: border-box; font: 13px var(--vessel-font); margin-bottom: 12px; }
+      .routine-editor .editor-actions { display: flex; gap: 8px; margin-top: 8px; }
+      .routine-editor .editor-actions button { height: 28px; padding: 0 12px; font: 12.5px var(--vessel-font); cursor: pointer; }
+      .routine-editor .add-row {
+        display: inline-flex; align-items: center; gap: 6px; margin-top: 4px;
+        padding: 5px 9px; border-radius: 7px; border: 1px dashed var(--vessel-border);
+        background: transparent; color: var(--vessel-text-muted); cursor: pointer; font: 12px var(--vessel-font);
+      }
+
+      /* volume panel */
+      .volume {
+        border-left: 1px solid var(--vessel-border); background: var(--vessel-surface);
+        padding: 22px 24px; display: flex; flex-direction: column;
+      }
+      .volume .label {
+        font: 600 10.5px var(--vessel-font); letter-spacing: 0.07em;
+        text-transform: uppercase; color: var(--vessel-text-muted);
+      }
+      .volume .big-row { display: flex; align-items: baseline; gap: 7px; margin-top: 12px; }
+      .volume .big {
+        font: 600 38px var(--vessel-font-mono); letter-spacing: -0.02em;
+        color: var(--vessel-text); line-height: 1;
+      }
+      .volume .big-unit { font: 14px var(--vessel-font-mono); color: var(--vessel-text-muted); }
+      .volume .moved { margin-top: 4px; font: 11px var(--vessel-font-mono); color: var(--vessel-text-muted); }
+      .volume .grow { flex: 1; }
+      .volume .chart-label { font: 11px var(--vessel-font-mono); color: var(--vessel-text-muted); margin-bottom: 10px; }
+      .chart { display: flex; align-items: flex-end; gap: 9px; height: 120px; }
+      .bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; height: 100%; justify-content: flex-end; }
+      .bar { width: 100%; border-radius: 4px; background: var(--vessel-border); transition: height .3s; }
+      .bar.current { background: var(--vessel-accent); }
+      .bar-val { font: 9.5px var(--vessel-font-mono); color: var(--vessel-text-muted); }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <header class="header">
+        <span class="icon" aria-hidden="true">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 12h18M5.5 8.5v7M8.5 7v10M15.5 7v10M18.5 8.5v7" />
+          </svg>
+        </span>
+        <span class="title" id="title">Strength log</span>
+        <span class="meta" id="meta"></span>
+        <span id="header-edit"></span>
+        <span class="spacer"></span>
+        <div class="header-tools">
+          <div class="date-ctl">
+            <button class="icon-btn" id="prev-day" type="button" title="Previous day" aria-label="Previous day"></button>
+            <input type="date" id="date-input" aria-label="Workout date" />
+            <button class="icon-btn" id="next-day" type="button" title="Next day" aria-label="Next day"></button>
+          </div>
+          <div class="unit-toggle" id="unit-toggle" role="group" aria-label="Weight unit">
+            <button type="button" data-unit="kg">kg</button>
+            <button type="button" data-unit="lb">lb</button>
+          </div>
+        </div>
+      </header>
+
+      <div class="body">
+        <section class="lifts" id="lifts"></section>
+        <aside class="volume">
+          <span class="label">Training volume</span>
+          <div class="big-row">
+            <span class="big" id="vol-big">0.0</span>
+            <span class="big-unit" id="vol-big-unit">t this day</span>
+          </div>
+          <div class="moved" id="moved"></div>
+          <div class="grow"></div>
+          <span class="chart-label" id="chart-label">last 6 weeks · tonnes</span>
+          <div class="chart" id="chart"></div>
+        </aside>
+      </div>
+    </div>
+
+    <script>
+      const $lifts = document.getElementById("lifts");
+      const $title = document.getElementById("title");
+      const $meta = document.getElementById("meta");
+      const $headerEdit = document.getElementById("header-edit");
+      const $volBig = document.getElementById("vol-big");
+      const $volBigUnit = document.getElementById("vol-big-unit");
+      const $moved = document.getElementById("moved");
+      const $chart = document.getElementById("chart");
+      const $chartLabel = document.getElementById("chart-label");
+      const $dateInput = document.getElementById("date-input");
+      const $prevDay = document.getElementById("prev-day");
+      const $nextDay = document.getElementById("next-day");
+      const $unitToggle = document.getElementById("unit-toggle");
+
+      // ---- unit conversion (canonical storage is kg) ----
+      const KG_PER_LB = 0.45359237;
+      const toDisplay = (kg, unit) => (unit === "lb" ? kg / KG_PER_LB : kg);
+      const toKg = (val, unit) => (unit === "lb" ? val * KG_PER_LB : val);
+
+      const j = (r) => r.json();
+      const el = (tag, cls, text) => {
+        const e = document.createElement(tag);
+        if (cls) e.className = cls;
+        if (text != null) e.textContent = text;
+        return e;
+      };
+      const num = (n) =>
+        Number.isInteger(n) ? String(n) : String(parseFloat(n.toFixed(2)));
+      // Coerce free-text numeric input to a non-negative number (bad → 0).
+      const toNum = (v) => {
+        const n = parseFloat(v);
+        return Number.isFinite(n) && n > 0 ? n : 0;
+      };
+      // A weight in the current display unit, formatted (rounded to 0.1).
+      const dispW = (kg) => num(parseFloat(toDisplay(kg, current.unit).toFixed(1)));
+
+      const NS = "http://www.w3.org/2000/svg";
+      function svgIcon(paths, size) {
+        const svg = document.createElementNS(NS, "svg");
+        const s = String(size || 15);
+        svg.setAttribute("width", s);
+        svg.setAttribute("height", s);
+        svg.setAttribute("viewBox", "0 0 24 24");
+        svg.setAttribute("fill", "none");
+        svg.setAttribute("stroke", "currentColor");
+        svg.setAttribute("stroke-width", "1.6");
+        svg.setAttribute("stroke-linecap", "round");
+        svg.setAttribute("stroke-linejoin", "round");
+        for (const d of paths) {
+          const p = document.createElementNS(NS, "path");
+          p.setAttribute("d", d);
+          svg.appendChild(p);
+        }
+        return svg;
+      }
+      const plusIcon = () => svgIcon(["M12 5.5v13", "M5.5 12h13"], 14);
+      const pencilIcon = () => svgIcon(["M4 20h4L18.5 9.5a2 2 0 0 0-2.8-2.8L5 17v3z", "M14 7l3 3"]);
+      const trashIcon = () => svgIcon(["M4 7h16", "M9 7V4.5h6V7", "M6 7l1 13h10l1-13"]);
+      const checkIcon = () => svgIcon(["M5 12.5l4.5 4.5L19 6.5"]);
+      const xIcon = () => svgIcon(["M6 6l12 12", "M18 6L6 18"]);
+
+      function iconBtn(svg, title, onclick, danger) {
+        const b = el("button", "icon-btn" + (danger ? " danger" : ""));
+        b.type = "button";
+        b.title = title;
+        b.setAttribute("aria-label", title);
+        b.appendChild(svg);
+        b.onclick = onclick;
+        return b;
+      }
+      $prevDay.appendChild(svgIcon(["M15 5l-7 7 7 7"], 15));
+      $nextDay.appendChild(svgIcon(["M9 5l7 7-7 7"], 15));
+
+      // ---- state ----
+      let editingExId = null;    // exercise id whose name/target form is open
+      let addingExercise = false;
+      let editingSetId = null;   // set id whose weight/reps editor is open
+      let editingHeader = false;
+      let editingRoutineId = undefined; // null = new routine form, undefined = closed, id = edit
+      let current = null;        // last rendered payload
+
+      // ---- API helpers ----
+      const send = (url, method, body) =>
+        fetch(url, {
+          method,
+          headers: body ? { "content-type": "application/json" } : undefined,
+          body: body ? JSON.stringify(body) : undefined,
+        }).then(j);
+
+      // append ?date= to scope a mutation to the selected day
+      const withDate = (url) => {
+        const d = current ? current.date : null;
+        if (!d) return url;
+        return url + (url.includes("?") ? "&" : "?") + "date=" + encodeURIComponent(d);
+      };
+
+      async function refreshFrom(promise) {
+        render(await promise);
+      }
+
+      // ---- date helpers ----
+      const shiftDate = (iso, days) => {
+        const d = new Date(iso + "T00:00:00");
+        d.setDate(d.getDate() + days);
+        return d.toISOString().slice(0, 10);
+      };
+      async function loadDate(date) {
+        render(await fetch("/api/session?date=" + encodeURIComponent(date)).then(j));
+      }
+
+      function render(session) {
+        current = session;
+        $title.textContent = session.title;
+        $meta.textContent = session.meta;
+        $dateInput.value = session.date;
+
+        // unit toggle highlight
+        for (const b of $unitToggle.querySelectorAll("button")) {
+          b.classList.toggle("on", b.dataset.unit === session.unit);
+        }
+
+        // header action: edit day title/meta
+        $headerEdit.innerHTML = "";
+        if (editingHeader) {
+          renderHeaderForm();
+        } else {
+          $headerEdit.appendChild(
+            iconBtn(pencilIcon(), "Edit day", () => {
+              editingHeader = true;
+              render(current);
+            })
+          );
+        }
+
+        // exercises + sets
+        $lifts.innerHTML = "";
+        $lifts.append(renderRoutineBar(session));
+        if (editingRoutineId !== undefined) {
+          $lifts.append(renderRoutineEditor(session));
+        }
+
+        if (session.exercises.length === 0 && editingRoutineId === undefined && !addingExercise) {
+          $lifts.append(
+            el("div", "empty-day", "No exercises logged for this day. Apply a routine or add an exercise to start.")
+          );
+        }
+        for (const ex of session.exercises) {
+          $lifts.append(renderLift(ex));
+        }
+
+        // add-exercise control (or its form)
+        if (addingExercise) {
+          $lifts.append(exerciseForm(null));
+        } else {
+          const addEx = el("button", "add-exercise");
+          addEx.type = "button";
+          addEx.append(plusIcon(), document.createTextNode("Add exercise"));
+          addEx.onclick = () => { addingExercise = true; render(current); };
+          $lifts.append(addEx);
+        }
+
+        // volume headline (converts t→lb total when in lb)
+        renderVolume(session);
+      }
+
+      function renderVolume(session) {
+        const unit = session.unit;
+        if (unit === "lb") {
+          // total weight moved this day in lb; big number in thousands of lb
+          const lb = toDisplay(session.today_kg, "lb");
+          $volBig.textContent = num(parseFloat((lb / 1000).toFixed(1)));
+          $volBigUnit.textContent = "k lb this day";
+          $moved.textContent = Math.round(lb).toLocaleString() + " lb moved";
+          $chartLabel.textContent = "last 6 weeks · thousand lb";
+        } else {
+          $volBig.textContent = session.today_t.toFixed(1);
+          $volBigUnit.textContent = "t this day";
+          $moved.textContent = Math.round(session.today_kg).toLocaleString() + " kg moved";
+          $chartLabel.textContent = "last 6 weeks · tonnes";
+        }
+
+        // 6-week chart; series is tonnes. Display value depends on unit.
+        const seriesT = session.volume_series;
+        const series = seriesT.map((t) => (unit === "lb" ? toDisplay(t * 1000, "lb") / 1000 : t));
+        const max = Math.max(...series, 0);
+        $chart.innerHTML = "";
+        series.forEach((v, i) => {
+          const col = el("div", "bar-col");
+          const bar = el("div", "bar" + (i === series.length - 1 ? " current" : ""));
+          bar.style.height = max > 0 ? (v / max) * 100 + "%" : "0%";
+          col.append(bar, el("span", "bar-val", v.toFixed(1)));
+          $chart.append(col);
+        });
+      }
+
+      function renderHeaderForm() {
+        $headerEdit.innerHTML = "";
+        const form = el("span", "edit-form");
+        form.style.marginBottom = "0";
+        const titleIn = el("input", "name-in");
+        titleIn.value = current.title;
+        titleIn.maxLength = 200;
+        titleIn.placeholder = "Day title";
+        const metaIn = el("input", "target-in");
+        metaIn.value = current.meta;
+        metaIn.maxLength = 200;
+        metaIn.placeholder = "Note (e.g. Push day)";
+        metaIn.style.width = "180px";
+
+        const save = el("button", "vessel-primary", "Save");
+        save.type = "button";
+        save.onclick = async () => {
+          editingHeader = false;
+          await refreshFrom(send(withDate("/api/session"), "PATCH", {
+            title: titleIn.value, meta: metaIn.value,
+          }));
+        };
+        const cancel = el("button", null, "Cancel");
+        cancel.type = "button";
+        cancel.onclick = () => { editingHeader = false; render(current); };
+
+        form.append(titleIn, metaIn, save, cancel);
+        $headerEdit.appendChild(form);
+        titleIn.focus();
+      }
+
+      // ---- routines ----
+      function renderRoutineBar(session) {
+        const bar = el("div", "routine-bar");
+        bar.append(el("span", "label", "Routine"));
+
+        const select = el("select");
+        select.setAttribute("aria-label", "Select routine");
+        const ph = el("option", null, session.routines.length ? "Apply a routine…" : "No routines yet");
+        ph.value = "";
+        select.append(ph);
+        for (const r of session.routines) {
+          const opt = el("option", null, r.name + " (" + r.exercises.length + ")");
+          opt.value = String(r.id);
+          select.append(opt);
+        }
+
+        const apply = el("button", "vessel-primary", "Apply to day");
+        apply.type = "button";
+        apply.disabled = session.routines.length === 0;
+        apply.onclick = () => {
+          const id = select.value;
+          if (!id) { select.focus(); return; }
+          refreshFrom(send(withDate("/api/routines/" + id + "/apply"), "POST"));
+        };
+
+        const editBtn = el("button", null, "Edit");
+        editBtn.type = "button";
+        editBtn.disabled = session.routines.length === 0;
+        editBtn.onclick = () => {
+          const id = select.value;
+          editingRoutineId = id ? Number(id) : (session.routines[0] && session.routines[0].id) || null;
+          render(current);
+        };
+
+        const newBtn = el("button", null, "New");
+        newBtn.type = "button";
+        newBtn.onclick = () => { editingRoutineId = null; render(current); };
+
+        bar.append(select, apply, el("span", "spacer"), editBtn, newBtn);
+        return bar;
+      }
+
+      function renderRoutineEditor(session) {
+        const editing = editingRoutineId !== null
+          ? session.routines.find((r) => r.id === editingRoutineId)
+          : null;
+
+        const card = el("div", "routine-editor vessel-card");
+        card.append(el("h3", null, editing ? "Edit routine" : "New routine"));
+
+        const nameIn = el("input", "rname");
+        nameIn.placeholder = "Routine name (e.g. Push A)";
+        nameIn.maxLength = 200;
+        nameIn.value = editing ? editing.name : "";
+        card.append(nameIn);
+
+        const rowsWrap = el("div");
+        const addRowEl = (name, target) => {
+          const row = el("div", "row");
+          const n = el("input", "name-in");
+          n.placeholder = "Exercise name";
+          n.maxLength = 200;
+          n.value = name || "";
+          const t = el("input", "target-in");
+          t.placeholder = "Target";
+          t.maxLength = 200;
+          t.value = target || "";
+          const del = iconBtn(trashIcon(), "Remove", () => row.remove(), true);
+          row.append(n, t, del);
+          rowsWrap.append(row);
+        };
+        if (editing && editing.exercises.length) {
+          editing.exercises.forEach((e) => addRowEl(e.name, e.target));
+        } else {
+          addRowEl("", "");
+        }
+        card.append(rowsWrap);
+
+        const addRow = el("button", "add-row");
+        addRow.type = "button";
+        addRow.append(plusIcon(), document.createTextNode("Add exercise"));
+        addRow.onclick = () => addRowEl("", "");
+        card.append(addRow);
+
+        const collect = () => ({
+          name: nameIn.value.trim(),
+          exercises: [...rowsWrap.querySelectorAll(".row")]
+            .map((row) => {
+              const ins = row.querySelectorAll("input");
+              return { name: ins[0].value.trim(), target: ins[1].value };
+            })
+            .filter((e) => e.name),
+        });
+
+        const actions = el("div", "editor-actions");
+        const save = el("button", "vessel-primary", "Save");
+        save.type = "button";
+        save.onclick = async () => {
+          const body = collect();
+          if (!body.name) { nameIn.focus(); return; }
+          const url = editing ? "/api/routines/" + editing.id : "/api/routines";
+          const method = editing ? "PATCH" : "POST";
+          const res = await send(url, method, body);
+          editingRoutineId = undefined;
+          // re-fetch the day so routines list + everything is fresh
+          current.routines = res.routines;
+          render(current);
+        };
+        const cancel = el("button", null, "Cancel");
+        cancel.type = "button";
+        cancel.onclick = () => { editingRoutineId = undefined; render(current); };
+
+        actions.append(save, cancel);
+        if (editing) {
+          const del = el("button", "vessel-danger", "Delete routine");
+          del.type = "button";
+          del.onclick = async () => {
+            const res = await send("/api/routines/" + editing.id, "DELETE");
+            editingRoutineId = undefined;
+            current.routines = res.routines;
+            render(current);
+          };
+          actions.append(del);
+        }
+        card.append(actions);
+        setTimeout(() => nameIn.focus(), 0);
+        return card;
+      }
+
+      function renderLift(ex) {
+        const lift = el("div", "lift");
+
+        if (editingExId === ex.id) {
+          lift.append(exerciseForm(ex));
+        } else {
+          const head = el("div", "lift-head");
+          head.append(
+            el("span", "lift-name", ex.name),
+            el("span", "lift-target", ex.target),
+            el("div", "spacer"),
+            el("span", "lift-best", "prev best " + dispW(ex.best) + " " + current.unit)
+          );
+          const actions = el("span", "lift-actions");
+          actions.append(
+            iconBtn(pencilIcon(), "Edit exercise", () => {
+              editingExId = ex.id; render(current);
+            }),
+            iconBtn(trashIcon(), "Delete exercise", () => {
+              refreshFrom(send("/api/exercises/" + ex.id, "DELETE"));
+            }, true)
+          );
+          head.append(actions);
+          lift.append(head);
+        }
+
+        // heaviest weight (kg) among this exercise's sets (for the PR badge)
+        const maxW = ex.sets.reduce((m, s) => Math.max(m, s.w), -Infinity);
+
+        const sets = el("div", "sets");
+        ex.sets.forEach((s, i) => {
+          sets.append(renderSetRow(ex, s, i, maxW));
+        });
+        lift.append(sets);
+
+        const btn = el("button", "add-set");
+        btn.type = "button";
+        btn.append(plusIcon(), document.createTextNode("Add set"));
+        btn.onclick = () => addSet(ex.id, btn);
+        lift.append(btn);
+
+        return lift;
+      }
+
+      function renderSetRow(ex, s, i, maxW) {
+        const row = el("div", "set-row");
+        row.append(el("span", "set-idx", String(i + 1)));
+
+        if (editingSetId === s.id) {
+          // inline weight × reps editor — values shown/entered in current unit
+          const wrap = el("span", "set-edit");
+          const wIn = el("input", "");
+          wIn.type = "number"; wIn.min = "0"; wIn.step = "0.5";
+          wIn.value = dispW(s.w); wIn.setAttribute("aria-label", "weight " + current.unit);
+          const unit = el("span", "unit", current.unit);
+          const times = el("span", "times", "×");
+          const rIn = el("input", "reps-in");
+          rIn.type = "number"; rIn.min = "0"; rIn.step = "1";
+          rIn.value = String(s.r); rIn.setAttribute("aria-label", "reps");
+          wrap.append(wIn, unit, times, rIn);
+          row.append(wrap);
+
+          const saveSet = () =>
+            refreshFrom(send("/api/sets/" + s.id, "PATCH", {
+              w: toKg(toNum(wIn.value), current.unit),
+              r: Math.round(toNum(rIn.value)),
+            })).then(() => { editingSetId = null; });
+          rIn.onkeydown = (e) => { if (e.key === "Enter") saveSet(); };
+          wIn.onkeydown = (e) => { if (e.key === "Enter") saveSet(); };
+
+          const actions = el("span");
+          actions.style.justifySelf = "end";
+          actions.append(
+            iconBtn(checkIcon(), "Save set", saveSet),
+            iconBtn(xIcon(), "Cancel", () => { editingSetId = null; render(current); })
+          );
+          row.append(actions);
+          setTimeout(() => wIn.focus(), 0);
+          return row;
+        }
+
+        const val = el("span", "set-val");
+        val.title = "Click to edit";
+        val.append(document.createTextNode(dispW(s.w) + " " + current.unit + " "));
+        val.append(el("span", "reps", "× " + s.r));
+        val.onclick = () => { editingSetId = s.id; render(current); };
+        row.append(val);
+
+        const isPr = s.w >= ex.best && s.w === maxW && s.w > 0;
+        if (isPr) {
+          row.append(el("span", "pr", "PR"));
+        } else {
+          row.append(el("span")); // keep the grid column
+        }
+
+        row.append(
+          iconBtn(trashIcon(), "Delete set", () => {
+            refreshFrom(send("/api/sets/" + s.id, "DELETE"));
+          }, true)
+        );
+        return row;
+      }
+
+      // Shared add/edit-exercise form. ex === null → add to the selected day.
+      function exerciseForm(ex) {
+        const form = el("div", "edit-form");
+        const nameIn = el("input", "name-in");
+        nameIn.maxLength = 200;
+        nameIn.placeholder = "Exercise name";
+        nameIn.value = ex ? ex.name : "";
+        const targetIn = el("input", "target-in");
+        targetIn.maxLength = 200;
+        targetIn.placeholder = "Target (e.g. 3 × 8)";
+        targetIn.value = ex ? ex.target : "";
+
+        const save = el("button", "vessel-primary", ex ? "Save" : "Add");
+        save.type = "button";
+        const submit = async () => {
+          const name = nameIn.value.trim();
+          if (!name) { nameIn.focus(); return; }
+          const body = { name, target: targetIn.value };
+          if (ex) {
+            editingExId = null;
+            await refreshFrom(send("/api/exercises/" + ex.id, "PATCH", body));
+          } else {
+            addingExercise = false;
+            await refreshFrom(send(withDate("/api/exercises"), "POST", body));
+          }
+        };
+        save.onclick = submit;
+        nameIn.onkeydown = (e) => { if (e.key === "Enter") submit(); };
+        targetIn.onkeydown = (e) => { if (e.key === "Enter") submit(); };
+
+        const cancel = el("button", null, "Cancel");
+        cancel.type = "button";
+        cancel.onclick = () => {
+          if (ex) editingExId = null; else addingExercise = false;
+          render(current);
+        };
+
+        form.append(nameIn, targetIn, save, cancel);
+        setTimeout(() => nameIn.focus(), 0);
+        return form;
+      }
+
+      async function addSet(exerciseId, btn) {
+        btn.disabled = true;
+        try {
+          render(await send("/api/exercises/" + exerciseId + "/sets", "POST"));
+        } finally {
+          if (btn.isConnected) btn.disabled = false;
+        }
+      }
+
+      // ---- header controls ----
+      $dateInput.onchange = () => {
+        if ($dateInput.value) { resetTransient(); loadDate($dateInput.value); }
+      };
+      $prevDay.onclick = () => { resetTransient(); loadDate(shiftDate(current.date, -1)); };
+      $nextDay.onclick = () => { resetTransient(); loadDate(shiftDate(current.date, 1)); };
+      $unitToggle.onclick = (e) => {
+        const b = e.target.closest("button[data-unit]");
+        if (!b || b.dataset.unit === current.unit) return;
+        refreshFrom(send(withDate("/api/unit"), "PATCH", { unit: b.dataset.unit }));
+      };
+
+      function resetTransient() {
+        editingExId = null; addingExercise = false;
+        editingSetId = null; editingHeader = false; editingRoutineId = undefined;
+      }
+
+      (async () => {
+        render(await fetch("/api/session").then(j));
+      })();
+    </script>
+  </body>
+</html>

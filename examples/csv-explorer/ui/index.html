@@ -1,0 +1,626 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CSV Explorer</title>
+    <!-- Layout only. All colors come from the Vessel theme (--vessel-* tokens
+         + base component styles injected by the host). Toggle light/dark or the
+         theme in the host and this UI follows. Road status dots use a small
+         fixed categorical ramp (with --vessel-ok / --vessel-danger where they
+         fit) since those categories aren't part of the theme palette. -->
+    <style>
+      html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; }
+      .app {
+        display: flex; flex-direction: column; height: 100vh; overflow: hidden;
+        font: 14px var(--vessel-font); color: var(--vessel-text);
+        background: var(--vessel-bg);
+      }
+
+      /* header */
+      .head {
+        display: flex; align-items: baseline; gap: 12px;
+        padding: 15px 24px; background: var(--vessel-surface);
+        border-bottom: 1px solid var(--vessel-border);
+      }
+      .head .ico { align-self: center; color: var(--vessel-text-muted); display: flex; }
+      .head .name { font: 600 16px var(--vessel-font); letter-spacing: -0.01em; }
+      .head .meta { font: 11.5px var(--vessel-font-mono); color: var(--vessel-text-muted); }
+      .head .spacer { flex: 1; }
+      .head button.act {
+        align-self: center; display: inline-flex; align-items: center; gap: 6px;
+        height: 30px; padding: 0 12px; border-radius: var(--vessel-radius);
+        border: 1px solid var(--vessel-border); background: var(--vessel-field);
+        color: var(--vessel-text); font: 500 12.5px var(--vessel-font); cursor: pointer;
+      }
+      .head button.act .ico { color: inherit; }
+
+      /* filter bar */
+      .filter {
+        display: flex; align-items: center; gap: 10px;
+        padding: 12px 24px; border-bottom: 1px solid var(--vessel-border);
+        background: var(--vessel-bg);
+      }
+      .search {
+        flex: 1; display: flex; align-items: center; gap: 9px;
+        height: 34px; padding: 0 12px; border-radius: 8px;
+        background: var(--vessel-field); border: 1px solid var(--vessel-border);
+        color: var(--vessel-text-muted);
+      }
+      .search input {
+        flex: 1; min-width: 0; border: none; outline: none; background: transparent;
+        font: 13px var(--vessel-font); color: var(--vessel-text); padding: 0; height: auto;
+      }
+      .search .clear {
+        border: none; background: transparent; color: var(--vessel-text-muted);
+        cursor: pointer; display: flex; padding: 2px; line-height: 0;
+      }
+      .filter .shown {
+        font: 11.5px var(--vessel-font-mono); color: var(--vessel-text-muted); white-space: nowrap;
+      }
+
+      /* table scroll viewport — wraps the sticky header + the rows so wide
+         tables scroll horizontally (and vertically) WITHIN the table area while
+         the tool chrome (header, filter, footer) stays put. The page/body never
+         scrolls. */
+      .table { flex: 1; min-height: 0; overflow: auto; }
+
+      /* table header — sticky vertically within .table; the header row and the
+         data rows share the same grid-template-columns + the same min-width
+         (set in JS) so columns stay aligned while scrolling horizontally. */
+      .thead {
+        display: grid; gap: 14px; padding: 9px 24px; box-sizing: border-box;
+        width: 100%;
+        background: var(--vessel-bg); border-bottom: 1px solid var(--vessel-border);
+        position: sticky; top: 0; z-index: 1;
+      }
+      .col {
+        display: flex; align-items: center; gap: 4px; border: none; background: transparent;
+        cursor: pointer; padding: 0; font: 600 10.5px var(--vessel-font);
+        letter-spacing: 0.06em; text-transform: uppercase; color: var(--vessel-text-muted);
+        min-width: 0;
+      }
+      .col .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .col.on { color: var(--vessel-text); }
+      .col.right { justify-content: flex-end; }
+      .col .caret { display: flex; color: var(--vessel-accent); opacity: 0; transition: transform .12s; flex: 0 0 auto; }
+      .col.on .caret { opacity: 1; }
+      .col .caret.asc { transform: rotate(180deg); }
+      .thead .edcol { /* trailing actions header spacer */ }
+
+      /* rows — the rows region lives inside .table, so it does not scroll on its
+         own; it just lays out the data rows. Each .row mirrors the header grid
+         (same template + same min-width) so columns stay aligned. */
+      .body { }
+      .row {
+        display: grid; gap: 14px; padding: 0 24px; align-items: center; min-height: 37px;
+        box-sizing: border-box; width: 100%;
+        border-bottom: 1px solid var(--vessel-border);
+      }
+      .row.alt { background: var(--vessel-surface); }
+      .cell { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font: 13px var(--vessel-font); color: var(--vessel-text); }
+      .cell.muted { color: var(--vessel-text-muted); }
+      .cell.num {
+        text-align: right; font: 13px var(--vessel-font-mono);
+        color: var(--vessel-text); letter-spacing: -0.01em;
+      }
+      .cell.num.cold { color: var(--vessel-accent); }
+      .cell.road {
+        display: inline-flex; align-items: center; gap: 7px;
+        font: 12.5px var(--vessel-font); color: var(--vessel-text);
+      }
+      .dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 7px; }
+      .rowacts { display: flex; gap: 4px; justify-content: flex-end; }
+      .rowacts button {
+        border: none; background: transparent; color: var(--vessel-text-muted);
+        cursor: pointer; display: flex; padding: 4px; line-height: 0; border-radius: 5px;
+      }
+      .rowacts button:hover { color: var(--vessel-text); background: var(--vessel-field); }
+      .rowacts button.del:hover { color: var(--vessel-danger); }
+      .empty {
+        padding: 40px; text-align: center; font: 13px var(--vessel-font); color: var(--vessel-text-muted);
+      }
+
+      /* footer — quiet SQLite cue */
+      .foot {
+        display: flex; align-items: center; gap: 12px; padding: 9px 24px;
+        border-top: 1px solid var(--vessel-border); background: var(--vessel-surface);
+      }
+      .foot .sql {
+        font: 11px var(--vessel-font-mono); color: var(--vessel-text-muted);
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      }
+      .foot .scan { font: 11px var(--vessel-font-mono); color: var(--vessel-text-muted); white-space: nowrap; }
+      .foot .spacer { flex: 1; }
+      .foot button.add {
+        display: inline-flex; align-items: center; gap: 5px;
+        height: 26px; padding: 0 10px; border-radius: var(--vessel-radius);
+        border: 1px solid var(--vessel-border); background: var(--vessel-field);
+        color: var(--vessel-text); font: 500 11.5px var(--vessel-font); cursor: pointer;
+      }
+
+      /* modal (import + row editor) */
+      .scrim {
+        position: fixed; inset: 0; background: rgba(0,0,0,0.32);
+        display: flex; align-items: center; justify-content: center; padding: 24px; z-index: 10;
+      }
+      .scrim[hidden] { display: none; }
+      .modal {
+        width: min(560px, 100%); max-height: calc(100vh - 48px); overflow-y: auto;
+        background: var(--vessel-surface); border: 1px solid var(--vessel-border);
+        border-radius: var(--vessel-radius); padding: 20px 22px;
+        box-shadow: 0 18px 50px -12px rgba(20,22,28,0.40);
+      }
+      .modal h2 { margin: 0 0 4px; font: 600 16px var(--vessel-font); }
+      .modal p.sub { margin: 0 0 16px; font: 12.5px var(--vessel-font); color: var(--vessel-text-muted); }
+      .modal label { display: block; font: 600 10.5px var(--vessel-font); letter-spacing: 0.06em; text-transform: uppercase; color: var(--vessel-text-muted); margin: 12px 0 6px; }
+      .modal textarea {
+        width: 100%; box-sizing: border-box; min-height: 120px; resize: vertical;
+        border: 1px solid var(--vessel-border); border-radius: 8px; background: var(--vessel-field);
+        color: var(--vessel-text); font: 12px var(--vessel-font-mono); padding: 10px;
+      }
+      .modal input[type="text"] {
+        width: 100%; box-sizing: border-box; height: 34px; padding: 0 10px;
+        border: 1px solid var(--vessel-border); border-radius: 8px; background: var(--vessel-field);
+        color: var(--vessel-text); font: 13px var(--vessel-font);
+      }
+      .modal input[type="file"] { font: 12px var(--vessel-font); color: var(--vessel-text-muted); }
+      .modefield { display: flex; gap: 16px; margin-top: 6px; }
+      .modefield label { margin: 0; display: inline-flex; align-items: center; gap: 6px; text-transform: none; letter-spacing: 0; font: 13px var(--vessel-font); color: var(--vessel-text); }
+      .editgrid { display: grid; grid-template-columns: minmax(80px, 0.4fr) 1fr; gap: 8px 12px; align-items: center; }
+      .editgrid .k { font: 600 11px var(--vessel-font); color: var(--vessel-text-muted); overflow: hidden; text-overflow: ellipsis; }
+      .err { margin-top: 12px; font: 12.5px var(--vessel-font); color: var(--vessel-danger); white-space: pre-wrap; }
+      .err[hidden] { display: none; }
+      .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+      .actions button {
+        height: 34px; padding: 0 14px; border-radius: var(--vessel-radius);
+        border: 1px solid var(--vessel-border); background: var(--vessel-field);
+        color: var(--vessel-text); font: 500 13px var(--vessel-font); cursor: pointer;
+      }
+      .actions button.primary {
+        background: var(--vessel-accent); color: var(--vessel-accent-text); border-color: transparent;
+      }
+      .actions button.danger { color: var(--vessel-danger); }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <div class="head">
+        <span class="ico" id="ico-table"></span>
+        <span class="name" id="title">stations.csv</span>
+        <span class="meta" id="meta">… rows · … columns · sqlite</span>
+        <span class="spacer"></span>
+        <button class="act" id="import-btn"><span class="ico" id="ico-import"></span>Import CSV</button>
+      </div>
+
+      <div class="filter">
+        <div class="search">
+          <span class="ico" id="ico-search"></span>
+          <input id="q" type="text" placeholder="Filter rows…" autocomplete="off" />
+          <button class="clear" id="clear" title="Clear" hidden></button>
+        </div>
+        <span class="shown" id="shown">0 shown</span>
+      </div>
+
+      <div class="table" id="table">
+        <div class="thead" id="thead"></div>
+        <div class="body" id="rows"></div>
+      </div>
+
+      <div class="foot">
+        <span class="sql" id="sql">select * from data</span>
+        <span class="spacer"></span>
+        <button class="add" id="add-btn"><span class="ico" id="ico-plus"></span>Add row</button>
+        <span class="scan" id="scan">scanned 0 · 0 ms</span>
+      </div>
+    </div>
+
+    <!-- Import modal -->
+    <div class="scrim" id="import-scrim" hidden>
+      <div class="modal">
+        <h2>Import CSV</h2>
+        <p class="sub">Paste CSV text or pick a .csv file. The first row is the header — all columns load as text.</p>
+        <label for="csv-file">From a file</label>
+        <input type="file" id="csv-file" accept=".csv,text/csv,text/plain" />
+        <label for="csv-text">Or paste CSV</label>
+        <textarea id="csv-text" placeholder="name,city,score&#10;Ada,London,98&#10;Linus,Helsinki,91"></textarea>
+        <label>Mode</label>
+        <div class="modefield">
+          <label><input type="radio" name="mode" value="replace" checked /> Replace dataset</label>
+          <label><input type="radio" name="mode" value="append" /> Append (matching columns)</label>
+        </div>
+        <div class="err" id="import-err" hidden></div>
+        <div class="actions">
+          <button id="import-cancel">Cancel</button>
+          <button id="import-go" class="primary">Import</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Row editor modal (add / edit) -->
+    <div class="scrim" id="row-scrim" hidden>
+      <div class="modal">
+        <h2 id="row-title">Add row</h2>
+        <p class="sub">Every value is stored as text.</p>
+        <div class="editgrid" id="row-fields"></div>
+        <div class="err" id="row-err" hidden></div>
+        <div class="actions">
+          <button id="row-delete" class="danger" hidden>Delete</button>
+          <span style="flex:1"></span>
+          <button id="row-cancel">Cancel</button>
+          <button id="row-save" class="primary">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // ---- inline monoline icons (stroke 1.6, currentColor) -----------------
+      const ICONS = {
+        table: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="14" rx="1.6"/><path d="M4 10h16M10 10v9"/></svg>',
+        search: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="6.4"/><line x1="20" y1="20" x2="15.8" y2="15.8"/></svg>',
+        close: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>',
+        chevd: '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
+        plus: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+        upload: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>',
+        edit: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4l10-10-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/></svg>',
+        trash: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/></svg>',
+      };
+      document.getElementById("ico-table").innerHTML = ICONS.table;
+      document.getElementById("ico-search").innerHTML = ICONS.search;
+      document.getElementById("clear").innerHTML = ICONS.close;
+      document.getElementById("ico-import").innerHTML = ICONS.upload;
+      document.getElementById("ico-plus").innerHTML = ICONS.plus;
+
+      // ---- station-aware presentation hints ---------------------------------
+      // The default seeded dataset gets the original niceties (numeric columns
+      // right-aligned + mono, cold temps accented, a Road status dot). Imported
+      // CSVs are arbitrary, so we keep the same heuristics generically: a column
+      // is treated as numeric if (almost) every shown cell parses as a number.
+      const NUMERICISH = new Set(["elev", "wind", "temp", "updated"]);
+      function colMeta(key, sampleRows) {
+        const k = key.toLowerCase();
+        if (k === "road") return { kind: "road" };
+        // numeric if a strong majority of non-empty cells parse as numbers
+        let nonEmpty = 0, numeric = 0;
+        for (const r of sampleRows) {
+          const v = r[key];
+          if (v == null || v === "") continue;
+          nonEmpty++;
+          if (!isNaN(parseFloat(v)) && isFinite(v.toString().trim())) numeric++;
+        }
+        const isNum = nonEmpty > 0 && numeric / nonEmpty >= 0.85;
+        if (isNum) return { kind: "num", cold: k === "temp" };
+        if (NUMERICISH.has(k)) return { kind: "num" };
+        return { kind: "text", muted: ["region", "city"].includes(k) };
+      }
+
+      function roadColor(road) {
+        if (road === "Open") return "var(--vessel-ok)";
+        if (road === "Closed") return "var(--vessel-danger)";
+        if (road === "Wind") return "oklch(0.66 0.12 70)"; // amber
+        if (road === "Ice") return "oklch(0.7 0.09 230)"; // pale blue
+        return "var(--vessel-text-muted)";
+      }
+
+      // ---- state -------------------------------------------------------------
+      let columns = [];          // live column names (from the backend allowlist)
+      let metaByCol = {};        // key -> presentation meta
+      let sort = { key: "", dir: "asc" };
+      let total = 0;
+
+      const $q = document.getElementById("q");
+      const $clear = document.getElementById("clear");
+      const $thead = document.getElementById("thead");
+      const $rows = document.getElementById("rows");
+      const $meta = document.getElementById("meta");
+      const $shown = document.getElementById("shown");
+      const $sql = document.getElementById("sql");
+      const $scan = document.getElementById("scan");
+
+      const fmt = (n) => Number(n).toLocaleString("en-US");
+      const j = (r) => r.json();
+
+      // Layout geometry shared by the header row and every data row. Each data
+      // column is minmax(<min>, 1fr): with few columns the 1fr tracks stretch to
+      // fill the width (no horizontal scrollbar); when the columns' total min
+      // exceeds the viewport the grid grows past it and the .table container
+      // scrolls horizontally instead of crushing columns to nothing.
+      const COL_GAP = 14;        // matches the CSS gap on .thead / .row
+      const COL_PAD = 24;        // matches the CSS horizontal padding (each side)
+      const ACT_W = 62;          // trailing action column (fixed)
+      const colMin = (key) => {
+        const m = metaByCol[key] || { kind: "text" };
+        return m.kind === "num" ? 84 : 96; // numeric a touch tighter than text
+      };
+
+      function gridTemplate() {
+        // each data column flexes from its kind-based min; trailing fixed action column
+        return columns.map((k) => "minmax(" + colMin(k) + "px, 1fr)").join(" ") + " " + ACT_W + "px";
+      }
+
+      function gridMinWidth() {
+        // Minimum total width the grid needs before it must scroll: the sum of
+        // every column's min, plus the inter-track gaps and the row's padding.
+        // Header and rows use this same value so they grow together and stay
+        // aligned while the .table container scrolls horizontally.
+        const tracks = columns.length + 1; // data columns + action column
+        const mins = columns.reduce((s, k) => s + colMin(k), ACT_W);
+        const gaps = Math.max(tracks - 1, 0) * COL_GAP;
+        return mins + gaps + COL_PAD * 2;
+      }
+
+      function renderHead() {
+        $thead.style.gridTemplateColumns = gridTemplate();
+        $thead.style.minWidth = gridMinWidth() + "px";
+        $thead.innerHTML = "";
+        for (const key of columns) {
+          const m = metaByCol[key] || { kind: "text" };
+          const on = sort.key === key;
+          const right = m.kind === "num";
+          const btn = document.createElement("button");
+          btn.className = "col" + (on ? " on" : "") + (right ? " right" : "");
+          const lbl = document.createElement("span");
+          lbl.className = "lbl";
+          lbl.textContent = key;
+          const caret = document.createElement("span");
+          caret.className = "caret" + (on && sort.dir === "asc" ? " asc" : "");
+          caret.innerHTML = ICONS.chevd;
+          if (right) btn.append(caret, lbl);
+          else btn.append(lbl, caret);
+          btn.onclick = () => {
+            if (sort.key === key) sort.dir = sort.dir === "asc" ? "desc" : "asc";
+            else sort = { key, dir: "asc" };
+            renderHead();
+            run();
+          };
+          $thead.appendChild(btn);
+        }
+        const acts = document.createElement("span");
+        acts.className = "edcol";
+        $thead.appendChild(acts);
+      }
+
+      function renderRows(rows, q) {
+        $rows.innerHTML = "";
+        if (rows.length === 0) {
+          const e = document.createElement("div");
+          e.className = "empty";
+          e.textContent = q ? 'No rows match "' + q + '".' : "No rows.";
+          $rows.appendChild(e);
+          return;
+        }
+        const tpl = gridTemplate();
+        const minW = gridMinWidth() + "px";
+        const frag = document.createDocumentFragment();
+        rows.forEach((x, i) => {
+          const row = document.createElement("div");
+          row.className = "row" + (i % 2 ? " alt" : "");
+          row.style.gridTemplateColumns = tpl;
+          row.style.minWidth = minW;
+          for (const key of columns) {
+            const m = metaByCol[key] || { kind: "text" };
+            const v = x[key] == null ? "" : x[key];
+            const cell = document.createElement("span");
+            if (m.kind === "road") {
+              cell.className = "cell road";
+              const dot = document.createElement("span");
+              dot.className = "dot";
+              dot.style.background = roadColor(v);
+              const label = document.createElement("span");
+              label.textContent = v;
+              cell.append(dot, label);
+            } else if (m.kind === "num") {
+              const cold = m.cold && parseFloat(v) < 0;
+              cell.className = "cell num" + (cold ? " cold" : "");
+              cell.textContent = v;
+            } else {
+              cell.className = "cell" + (m.muted ? " muted" : "");
+              cell.textContent = v;
+            }
+            row.appendChild(cell);
+          }
+          // row actions
+          const acts = document.createElement("span");
+          acts.className = "rowacts";
+          const ed = document.createElement("button");
+          ed.title = "Edit"; ed.innerHTML = ICONS.edit;
+          ed.onclick = () => openRowEditor(x);
+          const del = document.createElement("button");
+          del.className = "del"; del.title = "Delete"; del.innerHTML = ICONS.trash;
+          del.onclick = () => deleteRow(x.id);
+          acts.append(ed, del);
+          row.appendChild(acts);
+          frag.appendChild(row);
+        });
+        $rows.appendChild(frag);
+      }
+
+      function renderFooter(q, scanned, ms) {
+        // live SQL string echoing the parameterized query
+        const where = q ? " where <any col> like '%" + q + "%'" : "";
+        const order = sort.key ? " order by " + sort.key + " " + sort.dir : "";
+        $sql.textContent = "select * from data" + where + order;
+        $scan.textContent = "scanned " + fmt(scanned) + " · " + ms + " ms";
+      }
+
+      // ---- data --------------------------------------------------------------
+      let seq = 0;
+      let lastRows = [];
+
+      async function run() {
+        const q = $q.value.trim();
+        $clear.hidden = !$q.value;
+        const mine = ++seq;
+        const res = await fetch("/api/query", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ filter: q, sort: sort.key, dir: sort.dir, limit: 300 }),
+        }).then(j);
+        if (mine !== seq) return; // a newer request superseded this one
+        // refresh column meta from the returned columns + sample rows
+        columns = res.columns || columns;
+        lastRows = res.rows;
+        metaByCol = {};
+        for (const key of columns) metaByCol[key] = colMeta(key, res.rows);
+        if (!sort.key && columns.length) sort.key = columns[0];
+        renderHead();
+        renderRows(res.rows, q);
+        $shown.textContent = fmt(res.total) + " shown";
+        renderFooter(q, res.scanned, res.elapsed_ms);
+      }
+
+      let timer = null;
+      $q.addEventListener("input", () => {
+        clearTimeout(timer);
+        timer = setTimeout(run, 90);
+      });
+      $clear.onclick = () => {
+        $q.value = "";
+        $clear.hidden = true;
+        run();
+        $q.focus();
+      };
+
+      async function loadMeta() {
+        const m = await fetch("/api/meta").then(j);
+        total = m.total;
+        columns = m.column_names || [];
+        if (!sort.key && columns.length) sort.key = columns[0];
+        $meta.textContent = fmt(total) + " rows · " + m.columns + " columns · sqlite";
+      }
+
+      // ---- import modal ------------------------------------------------------
+      const $importScrim = document.getElementById("import-scrim");
+      const $csvFile = document.getElementById("csv-file");
+      const $csvText = document.getElementById("csv-text");
+      const $importErr = document.getElementById("import-err");
+
+      function showErr(el, msg) { el.textContent = msg; el.hidden = !msg; }
+
+      document.getElementById("import-btn").onclick = () => {
+        $csvText.value = ""; $csvFile.value = ""; showErr($importErr, "");
+        $importScrim.hidden = false;
+      };
+      document.getElementById("import-cancel").onclick = () => { $importScrim.hidden = true; };
+      $importScrim.onclick = (e) => { if (e.target === $importScrim) $importScrim.hidden = true; };
+
+      $csvFile.onchange = () => {
+        const f = $csvFile.files[0];
+        if (!f) return;
+        const MAX = 8_000_000;
+        if (f.size > MAX) { showErr($importErr, "File is too large (max 8 MB)."); return; }
+        const reader = new FileReader();
+        reader.onload = () => { $csvText.value = reader.result; showErr($importErr, ""); };
+        reader.onerror = () => showErr($importErr, "Could not read that file.");
+        reader.readAsText(f);
+      };
+
+      document.getElementById("import-go").onclick = async () => {
+        const text = $csvText.value;
+        const mode = document.querySelector('input[name="mode"]:checked').value;
+        if (!text.trim()) { showErr($importErr, "Paste CSV text or choose a file first."); return; }
+        showErr($importErr, "");
+        const res = await fetch("/api/import", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ text, mode }),
+        }).then(j).catch(() => ({ ok: false, error: "Import failed." }));
+        if (!res.ok) { showErr($importErr, res.error || "Import failed."); return; }
+        $importScrim.hidden = true;
+        sort = { key: "", dir: "asc" };
+        await loadMeta();
+        await run();
+      };
+
+      // ---- row editor modal (add / edit) ------------------------------------
+      const $rowScrim = document.getElementById("row-scrim");
+      const $rowFields = document.getElementById("row-fields");
+      const $rowTitle = document.getElementById("row-title");
+      const $rowErr = document.getElementById("row-err");
+      const $rowDelete = document.getElementById("row-delete");
+      let editingId = null;
+
+      function buildFields(values) {
+        $rowFields.innerHTML = "";
+        for (const key of columns) {
+          const k = document.createElement("span");
+          k.className = "k"; k.textContent = key; k.title = key;
+          const input = document.createElement("input");
+          input.type = "text"; input.dataset.col = key;
+          input.value = values && values[key] != null ? values[key] : "";
+          input.maxLength = 2000;
+          $rowFields.append(k, input);
+        }
+      }
+
+      function openRowEditor(row) {
+        editingId = row ? row.id : null;
+        $rowTitle.textContent = row ? "Edit row" : "Add row";
+        $rowDelete.hidden = !row;
+        showErr($rowErr, "");
+        buildFields(row || {});
+        $rowScrim.hidden = false;
+        const first = $rowFields.querySelector("input");
+        if (first) first.focus();
+      }
+
+      document.getElementById("add-btn").onclick = () => {
+        if (!columns.length) { return; }
+        openRowEditor(null);
+      };
+      document.getElementById("row-cancel").onclick = () => { $rowScrim.hidden = true; };
+      $rowScrim.onclick = (e) => { if (e.target === $rowScrim) $rowScrim.hidden = true; };
+
+      function collectValues() {
+        const values = {};
+        for (const input of $rowFields.querySelectorAll("input")) {
+          values[input.dataset.col] = input.value;
+        }
+        return values;
+      }
+
+      document.getElementById("row-save").onclick = async () => {
+        const values = collectValues();
+        let res;
+        if (editingId == null) {
+          res = await fetch("/api/rows", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ values }),
+          }).then(j).catch(() => ({ ok: false }));
+        } else {
+          res = await fetch("/api/rows", {
+            method: "PUT",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ id: editingId, values }),
+          }).then(j).catch(() => ({ ok: false }));
+        }
+        if (!res.ok) { showErr($rowErr, res.error || "Could not save."); return; }
+        $rowScrim.hidden = true;
+        await loadMeta();
+        await run();
+      };
+
+      $rowDelete.onclick = async () => {
+        if (editingId == null) return;
+        await deleteRow(editingId);
+        $rowScrim.hidden = true;
+      };
+
+      async function deleteRow(id) {
+        const res = await fetch("/api/rows/delete", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ id }),
+        }).then(j).catch(() => ({ ok: false }));
+        if (res.ok) { await loadMeta(); await run(); }
+      }
+
+      // ---- boot --------------------------------------------------------------
+      (async () => {
+        await loadMeta();
+        await run();
+      })();
+    </script>
+  </body>
+</html>

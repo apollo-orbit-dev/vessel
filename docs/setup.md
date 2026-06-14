@@ -78,11 +78,26 @@ node sdk/dist/cli.mjs build examples/notes # -> notes.vessel
 ```
 (Once published, this is just `vessel new` / `dev` / `build`.)
 
-## The example bundle
+## The example bundles
 - `examples/notes/` is a real **FastAPI** app (`app/main.py`, `async def`
   routes — Pyodide has no threads, so sync routes are not supported) + stdlib
   `sqlite3`, with a self-contained `ui/index.html`. `npm run build:bundle`
   packages it into `tests/fixtures/notes.vessel`.
+- `examples/` also holds **ten full example tools** (budget, flashcards,
+  csv-explorer, invoice, recipe-planner, habits, crm, job-tracker, workout,
+  journal) — each a working `.vessel` with full create/edit/delete, committed as a
+  ready-to-open `examples/<slug>/<slug>.vessel`. See `examples/README.md`. Rebuild
+  any with `node sdk/dist/cli.mjs build examples/<slug>`.
+- **Signing:** `csv-explorer` + `invoice` are signed with an **example** key in
+  `examples/.keys/` — `example.pub` is committed (shareable); the secret
+  `example.key` is gitignored (a throwaway example identity, not a real publisher
+  key). Re-sign with `… build examples/<slug> --sign examples/.keys/example.key`
+  (needs the secret key, so only the machine that ran `vessel keygen` can).
+- **Functional smoke** for the ten tools (boots each through the real
+  fetch→ASGI→SQLite bridge, exercises full CRUD + persistence): it is heavy
+  (~11 Pyodide boots, needs network) so it is **gated** and skipped by the default
+  `npm test`. Run it on demand from `host/`:
+  `SMOKE_EXAMPLES=1 npx vitest run examples-smoke`.
 
 ## Trying the full OS-association loop (Chromium, manual)
 The promptless double-click → open → save loop needs the PWA installed:

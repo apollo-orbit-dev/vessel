@@ -113,7 +113,7 @@ export function Settings({
         </div>
 
         <div style={{ display: "flex", alignItems: "center", padding: "14px 18px", borderTop: `1px solid ${t.hair}`, background: t.toolHeader }}>
-          <span style={{ font: `11px ${MONO}`, color: t.textMuted }}>Vessel 0.1.0 · runtime python 3.12</span>
+          <span style={{ font: `11px ${MONO}`, color: t.textMuted }}>{`Vessel ${__APP_VERSION__} · runtime python 3.12`}</span>
           <div style={{ flex: 1 }} />
           <Button kind="primary" onClick={onClose}>Done</Button>
         </div>

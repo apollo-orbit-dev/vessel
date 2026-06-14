@@ -32,10 +32,12 @@ jobs:
       - run: npm run build -w @vessel/host
       - name: Assemble Pages artifact (landing at /, host at /app/)
         run: |
-          mkdir -p _site/app
+          mkdir -p _site/app _site/examples
           cp -r site/. _site/
           cp -r host/dist/. _site/app/
           cp -r skills _site/skills
+          # Ship the example bundles for download (examples/<slug>/<slug>.vessel -> /examples/<slug>.vessel).
+          cp examples/*/*.vessel _site/examples/
           echo "getvessel.dev" > _site/CNAME
           touch _site/.nojekyll
       - uses: actions/upload-pages-artifact@v3

@@ -1,0 +1,604 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Invoice</title>
+    <!-- Layout only — colors come from the Vessel theme (--vessel-* tokens). The
+         "desk" behind the paper is --vessel-surface; the paper is the base
+         --vessel-bg surface with a --vessel-border hairline. Every number is set
+         in --vessel-font-mono; prose/labels in --vessel-font.
+
+         Editing is inline: fields on the paper are contenteditable / bare inputs
+         styled to look like the paper itself (no separate form), so the document
+         still reads as paper-on-desk. Edits persist to the backend (SQLite),
+         which is the source of truth on reopen. -->
+    <style>
+      html, body { height: 100%; }
+      body {
+        margin: 0; padding: 0;
+        font-family: var(--vessel-font);
+        color: var(--vessel-text);
+        background: var(--vessel-surface);
+      }
+      .app { display: flex; flex-direction: column; height: 100vh; }
+      .mono { font-family: var(--vessel-font-mono); }
+      .muted { color: var(--vessel-text-muted); }
+
+      /* ---- toolbar ---- */
+      .toolbar {
+        display: flex; align-items: center; gap: 12px;
+        padding: 12px 22px;
+        background: var(--vessel-bg);
+        border-bottom: 1px solid var(--vessel-border);
+      }
+      .toolbar .doc { color: var(--vessel-text-muted); display: flex; }
+      .toolbar .title { font-weight: 600; font-size: 15px; letter-spacing: -0.01em; }
+      .chip {
+        display: inline-flex; align-items: center; height: 19px; padding: 0 8px;
+        border-radius: 4px; background: var(--vessel-field);
+        border: 1px solid var(--vessel-border);
+        font-size: 11px; color: var(--vessel-text-muted);
+      }
+      .spacer { flex: 1; }
+      .toolbar button { display: inline-flex; align-items: center; gap: 7px; }
+
+      /* ---- desk + paper ----
+         The desk is the scrollable surface behind the paper. It scrolls in BOTH
+         axes when the window is short/narrow; the paper itself is a fixed-size
+         sheet that never resizes to the window, so its content can never escape
+         its bounds. align-items:flex-start keeps the paper from stretching to
+         the desk height; margin:auto centres it horizontally and leaves even
+         gutters. min-height is the A4-ish sheet aspect (~660 × 933) but the box
+         grows downward with content — it never clips. */
+      .desk {
+        flex: 1; min-height: 0; overflow: auto;
+        display: flex; justify-content: flex-start; align-items: flex-start;
+        padding: 26px 24px;
+      }
+      .paper {
+        width: 660px; flex: 0 0 auto; box-sizing: border-box;
+        margin: 0 auto; min-height: 933px;
+        background: var(--vessel-bg);
+        border: 1px solid var(--vessel-border);
+        border-radius: 6px;
+        padding: 38px 44px 34px;
+      }
+
+      /* ---- inline-edit affordances ----
+         Editable fields read as plain paper text until hovered/focused, when a
+         faint field background + hairline reveals them. All inherit color from
+         the surrounding text so theming stays intact. */
+      .edit {
+        background: transparent; border: 1px solid transparent;
+        border-radius: 5px; color: inherit; font: inherit;
+        margin: 0; padding: 1px 4px; box-sizing: border-box;
+        transition: background .12s, border-color .12s;
+      }
+      .edit:hover { background: var(--vessel-field); border-color: var(--vessel-border); }
+      .edit:focus {
+        outline: none; background: var(--vessel-field);
+        border-color: var(--vessel-accent);
+      }
+      /* contenteditable blocks (multi-line) */
+      [contenteditable].edit { white-space: pre-wrap; min-height: 1em; cursor: text; }
+      [contenteditable].edit:empty::before {
+        content: attr(data-placeholder); color: var(--vessel-text-muted); opacity: .7;
+      }
+      /* bare text inputs */
+      input.edit { display: inline-block; }
+      input.edit::placeholder { color: var(--vessel-text-muted); opacity: .7; }
+
+      .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
+      .head-left { flex: 1; min-width: 0; }
+      .from-name { font-weight: 600; font-size: 19px; letter-spacing: -0.015em; }
+      .from-name.edit { width: 100%; }
+      .from-lines {
+        margin-top: 5px; font-size: 12px; line-height: 1.6;
+        color: var(--vessel-text-muted); width: 100%;
+      }
+      .head-right { text-align: right; }
+      .inv-kicker {
+        font-weight: 600; font-size: 11px; letter-spacing: 0.1em;
+        text-transform: uppercase; color: var(--vessel-text-muted);
+      }
+      .inv-line { margin-top: 6px; font-size: 13px; display: flex; align-items: baseline; justify-content: flex-end; gap: 6px; }
+      .inv-line .lbl { color: var(--vessel-text-muted); font-size: 11.5px; }
+      .inv-line.small { margin-top: 3px; font-size: 11.5px; color: var(--vessel-text-muted); }
+      .inv-line input.edit { text-align: right; }
+      .num-field { width: 110px; }
+      .status-field { width: 92px; text-align: right; }
+      .date-field { width: 108px; }
+
+      .billed { margin-top: 26px; }
+      .billed .label {
+        font-weight: 600; font-size: 10px; letter-spacing: 0.08em;
+        text-transform: uppercase; color: var(--vessel-text-muted); margin-bottom: 6px;
+      }
+      .billed .name-field { font-size: 13.5px; line-height: 1.6; width: 60%; font-weight: 500; }
+      .billed .lines-field {
+        margin-top: 2px; font-size: 13px; line-height: 1.6;
+        color: var(--vessel-text-muted); width: 60%;
+      }
+
+      /* ---- line items ---- */
+      .items { margin-top: 28px; border-top: 1px solid var(--vessel-border); }
+      .row {
+        display: grid; grid-template-columns: 1fr 84px 96px 104px 26px; gap: 12px;
+        align-items: center; border-bottom: 1px solid var(--vessel-border);
+      }
+      .items-head {
+        padding: 11px 0 9px;
+        font-weight: 600; font-size: 10px; letter-spacing: 0.07em;
+        text-transform: uppercase; color: var(--vessel-text-muted);
+      }
+      .items-head .c-qty { text-align: center; }
+      .items-head .c-rate, .items-head .c-amount { text-align: right; }
+      .item-row { padding: 13px 0; }
+      .item-desc { font-size: 14px; width: 100%; }
+      .item-detail { margin-top: 2px; font-size: 11.5px; color: var(--vessel-text-muted); width: 100%; }
+      .qty-cell { display: flex; justify-content: center; }
+      .qty-cell input {
+        width: 52px; height: 30px; box-sizing: border-box; text-align: center;
+        border: 1px solid var(--vessel-border); border-radius: 6px;
+        background: var(--vessel-field); color: var(--vessel-text);
+        font-family: var(--vessel-font-mono); font-size: 13px;
+      }
+      .rate-cell { display: flex; justify-content: flex-end; align-items: center; }
+      .rate-cell .pre { color: var(--vessel-text-muted); font-family: var(--vessel-font-mono); font-size: 13px; }
+      .rate-cell input {
+        width: 70px; height: 30px; box-sizing: border-box; text-align: right;
+        border: 1px solid var(--vessel-border); border-radius: 6px;
+        background: var(--vessel-field); color: var(--vessel-text-muted);
+        font-family: var(--vessel-font-mono); font-size: 13px; padding: 0 6px;
+      }
+      .c-amount { text-align: right; font-size: 13.5px; letter-spacing: -0.01em; }
+      .del-cell { display: flex; justify-content: flex-end; }
+      .del-btn {
+        width: 24px; height: 24px; padding: 0;
+        display: inline-flex; align-items: center; justify-content: center;
+        background: transparent; border: 1px solid transparent; border-radius: 6px;
+        color: var(--vessel-text-muted); cursor: pointer;
+        transition: background .12s, color .12s, border-color .12s;
+      }
+      .del-btn:hover { color: var(--vessel-danger); border-color: var(--vessel-border); background: var(--vessel-field); }
+
+      .add-row { padding: 12px 0 2px; }
+      .add-btn {
+        display: inline-flex; align-items: center; gap: 7px;
+        background: transparent; border: 1px dashed var(--vessel-border);
+        border-radius: 6px; color: var(--vessel-text-muted);
+        padding: 7px 12px; cursor: pointer; font: inherit; font-size: 12.5px;
+        transition: background .12s, color .12s, border-color .12s;
+      }
+      .add-btn:hover { color: var(--vessel-text); border-color: var(--vessel-accent); background: var(--vessel-field); }
+
+      /* ---- totals ---- */
+      .totals-wrap { display: flex; justify-content: flex-end; margin-top: 18px; }
+      .totals { width: 280px; display: flex; flex-direction: column; gap: 9px; }
+      .totals .line {
+        display: flex; justify-content: space-between; align-items: center;
+        font-size: 13px; color: var(--vessel-text-muted);
+      }
+      .totals .line .val { font-size: 13px; color: var(--vessel-text); }
+      .totals .tax-label { display: inline-flex; align-items: baseline; gap: 4px; }
+      .totals .tax-rate-field {
+        width: 46px; text-align: right; font-family: var(--vessel-font-mono); font-size: 12px;
+      }
+      .totals .rule { height: 1px; background: var(--vessel-border); margin: 4px 0; }
+      .totals .grand { display: flex; justify-content: space-between; align-items: baseline; }
+      .totals .grand .label { font-weight: 600; font-size: 14px; color: var(--vessel-text); }
+      .totals .grand .amount { font-weight: 600; font-size: 22px; letter-spacing: -0.02em; }
+
+      .foot {
+        margin-top: 30px; padding-top: 16px; border-top: 1px solid var(--vessel-border);
+        font-size: 11.5px; line-height: 1.6; color: var(--vessel-text-muted);
+      }
+      .foot-field { width: 100%; }
+
+      @media print {
+        /* A clean one-page sheet: just the paper as plain ink. Drop the app's
+           viewport sizing so the page flows naturally onto the printed sheet
+           (no fixed 100vh / fixed paper height / scrollable desk in print). */
+        html, body { height: auto; }
+        body, .desk { background: #fff; }
+        .app { display: block; height: auto; }
+        .toolbar { display: none; }
+        .desk {
+          display: block; overflow: visible; padding: 0;
+          flex: none; min-height: 0;
+        }
+        .paper {
+          width: auto; min-height: 0; margin: 0;
+          border: none; border-radius: 0; padding: 0;
+        }
+        /* Hide edit affordances and inputs that don't print well; render values
+           as plain ink. The qty/rate/tax inputs keep their value visible. */
+        .edit, .edit:hover, .edit:focus {
+          background: transparent; border-color: transparent;
+        }
+        /* Drop the "Add line item" affordance and the per-row delete column. */
+        .del-cell, .add-row { display: none; }
+        .row { grid-template-columns: 1fr 84px 96px 104px; }
+        .qty-cell input, .rate-cell input {
+          border-color: transparent; background: transparent;
+        }
+        .totals .tax-rate-field { border-color: transparent; background: transparent; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <div class="toolbar">
+        <span class="doc" aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M7 3.5h7L18.5 8v12A1.5 1.5 0 0 1 17 21.5H7A1.5 1.5 0 0 1 5.5 20V5A1.5 1.5 0 0 1 7 3.5z" />
+            <path d="M13.5 3.5V8h5" />
+          </svg>
+        </span>
+        <span class="title" id="tb-title">Invoice</span>
+        <span class="chip" id="tb-status">Draft</span>
+        <span class="spacer"></span>
+        <button id="export" type="button">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 4v10" /><path d="M8 10.5l4 4 4-4" /><path d="M5 19h14" />
+          </svg>
+          Export PDF
+        </button>
+      </div>
+
+      <div class="desk">
+        <div class="paper" id="paper" hidden>
+          <div class="head">
+            <div class="head-left">
+              <input class="edit from-name" id="from-name" type="text"
+                     maxlength="400" placeholder="Your name / business"
+                     aria-label="Issuer name" />
+              <div class="edit from-lines" id="from-lines" contenteditable="plaintext-only"
+                   data-placeholder="Address · email · tax id" role="textbox"
+                   aria-label="Issuer details" aria-multiline="true"></div>
+            </div>
+            <div class="head-right">
+              <div class="inv-kicker">Invoice</div>
+              <div class="inv-line">
+                <span class="lbl">#</span>
+                <input class="edit mono num-field" id="inv-number" type="text"
+                       maxlength="400" placeholder="0001" aria-label="Invoice number" />
+              </div>
+              <div class="inv-line small">
+                <span class="lbl">status</span>
+                <input class="edit status-field" id="inv-status" type="text"
+                       maxlength="400" placeholder="Draft" aria-label="Status" />
+              </div>
+              <div class="inv-line small">
+                <span class="lbl">issued</span>
+                <input class="edit mono date-field" id="inv-issued" type="text"
+                       maxlength="400" placeholder="2026-01-01" aria-label="Issued date" />
+              </div>
+              <div class="inv-line small">
+                <span class="lbl">due</span>
+                <input class="edit mono date-field" id="inv-due" type="text"
+                       maxlength="400" placeholder="2026-01-15" aria-label="Due date" />
+              </div>
+            </div>
+          </div>
+
+          <div class="billed">
+            <div class="label">Billed to</div>
+            <input class="edit name-field" id="bill-name" type="text"
+                   maxlength="400" placeholder="Client name" aria-label="Billed-to name" />
+            <div class="edit lines-field" id="bill-lines" contenteditable="plaintext-only"
+                 data-placeholder="Client address" role="textbox"
+                 aria-label="Billed-to details" aria-multiline="true"></div>
+          </div>
+
+          <div class="items">
+            <div class="row items-head">
+              <span>Description</span>
+              <span class="c-qty">Qty</span>
+              <span class="c-rate">Rate</span>
+              <span class="c-amount">Amount</span>
+              <span></span>
+            </div>
+            <div id="items"></div>
+            <div class="add-row">
+              <button class="add-btn" id="add-item" type="button">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+                  <path d="M12 5v14" /><path d="M5 12h14" />
+                </svg>
+                Add line item
+              </button>
+            </div>
+          </div>
+
+          <div class="totals-wrap">
+            <div class="totals">
+              <div class="line"><span>Subtotal</span><span class="val mono" id="t-subtotal"></span></div>
+              <div class="line">
+                <span class="tax-label">
+                  Tax ·
+                  <input class="edit tax-rate-field" id="tax-rate" type="text"
+                         inputmode="decimal" maxlength="6" aria-label="Tax rate percent" />%
+                </span>
+                <span class="val mono" id="t-tax"></span>
+              </div>
+              <div class="rule"></div>
+              <div class="grand">
+                <span class="label">Total due</span>
+                <span class="amount mono" id="t-total"></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="foot">
+            <div class="edit foot-field" id="foot" contenteditable="plaintext-only"
+                 data-placeholder="Payment terms, thank-you note…" role="textbox"
+                 aria-label="Notes" aria-multiline="true"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const fmt = (n) =>
+        "$" + Number(n).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+
+      // Coerce a free-text numeric field to a non-negative number (non-numeric -> 0).
+      const numVal = (s) => {
+        const n = parseFloat(String(s).replace(/[^0-9.]/g, ""));
+        return Number.isFinite(n) && n >= 0 ? n : 0;
+      };
+      const intVal = (s) => {
+        const n = parseInt(String(s).replace(/[^0-9]/g, "") || "0", 10);
+        return Number.isFinite(n) && n >= 0 ? n : 0;
+      };
+
+      // Local mirror of the document for live recompute; the backend is the
+      // source of truth on reopen.
+      let items = [];
+      let taxRate = 8;
+
+      function recompute() {
+        const subtotal = items.reduce((s, x) => s + x.qty * x.rate, 0);
+        const tax = (subtotal * taxRate) / 100;
+        const total = subtotal + tax;
+        for (const x of items) {
+          const amt = $("amount-" + x.id);
+          if (amt) amt.textContent = fmt(x.qty * x.rate);
+        }
+        $("t-subtotal").textContent = fmt(subtotal);
+        $("t-tax").textContent = fmt(tax);
+        $("t-total").textContent = fmt(total);
+      }
+
+      // --- persistence helpers (best-effort; keep the UI responsive on a blip) -
+      async function api(path, method, body) {
+        try {
+          const opts = { method };
+          if (body !== undefined) {
+            opts.headers = { "content-type": "application/json" };
+            opts.body = JSON.stringify(body);
+          }
+          const r = await fetch(path, opts);
+          if (!r.ok) return null;
+          return await r.json();
+        } catch (e) {
+          return null;
+        }
+      }
+
+      const patchInvoice = (fields) => api("/api/invoice", "PATCH", fields);
+      const patchItem = (id, fields) => api("/api/items/" + id, "PATCH", fields);
+      const saveQty = (id, qty) => api("/api/items/" + id + "/qty", "PUT", { qty });
+
+      // Wire an editable element: on input run onLive(value); debounce-persist
+      // via save(value). contenteditable uses textContent; inputs use value.
+      function wireEdit(el, { isCE = false, onLive, save }) {
+        let timer = null;
+        const read = () => (isCE ? el.textContent : el.value);
+        const fire = () => {
+          if (onLive) onLive(read());
+          clearTimeout(timer);
+          timer = setTimeout(() => save(read()), 350);
+        };
+        el.addEventListener("input", fire);
+        el.addEventListener("blur", () => {
+          clearTimeout(timer);
+          save(read());
+        });
+        // Keep single-line contenteditable / inputs from inserting newlines where
+        // a single line is expected is handled per-field; multiline CE allows Enter.
+      }
+
+      function renderItems() {
+        const root = $("items");
+        root.innerHTML = "";
+        for (const x of items) {
+          const row = document.createElement("div");
+          row.className = "row item-row";
+
+          // description + detail (editable, plain text)
+          const left = document.createElement("div");
+          const d = document.createElement("input");
+          d.className = "edit item-desc";
+          d.type = "text";
+          d.maxLength = 400;
+          d.placeholder = "Description";
+          d.value = x.desc;
+          d.setAttribute("aria-label", "Line description");
+          wireEdit(d, {
+            onLive: (v) => { x.desc = v; },
+            save: (v) => patchItem(x.id, { descr: v }),
+          });
+          const det = document.createElement("input");
+          det.className = "edit item-detail";
+          det.type = "text";
+          det.maxLength = 400;
+          det.placeholder = "Detail (optional)";
+          det.value = x.detail;
+          det.setAttribute("aria-label", "Line detail");
+          wireEdit(det, {
+            onLive: (v) => { x.detail = v; },
+            save: (v) => patchItem(x.id, { detail: v }),
+          });
+          left.append(d, det);
+
+          // qty
+          const qtyCell = document.createElement("div");
+          qtyCell.className = "qty-cell";
+          const qInput = document.createElement("input");
+          qInput.type = "text";
+          qInput.inputMode = "numeric";
+          qInput.value = String(x.qty);
+          qInput.setAttribute("aria-label", "Quantity");
+          qInput.addEventListener("input", () => {
+            const q = intVal(qInput.value);
+            x.qty = q;
+            recompute();
+            saveQty(x.id, q);
+          });
+          qInput.addEventListener("blur", () => { qInput.value = String(x.qty); });
+          qtyCell.append(qInput);
+
+          // rate (editable)
+          const rateCell = document.createElement("div");
+          rateCell.className = "rate-cell";
+          const pre = document.createElement("span");
+          pre.className = "pre";
+          pre.textContent = "$";
+          const rInput = document.createElement("input");
+          rInput.type = "text";
+          rInput.inputMode = "decimal";
+          rInput.value = String(x.rate);
+          rInput.setAttribute("aria-label", "Rate");
+          rInput.addEventListener("input", () => {
+            const v = numVal(rInput.value);
+            x.rate = v;
+            recompute();
+            // debounce-persist the rate
+            clearTimeout(rInput._t);
+            rInput._t = setTimeout(() => patchItem(x.id, { rate: v }), 350);
+          });
+          rInput.addEventListener("blur", () => {
+            x.rate = numVal(rInput.value);
+            rInput.value = String(x.rate);
+            patchItem(x.id, { rate: x.rate });
+          });
+          rateCell.append(pre, rInput);
+
+          // amount (computed)
+          const amount = document.createElement("span");
+          amount.className = "c-amount mono";
+          amount.id = "amount-" + x.id;
+          amount.textContent = fmt(x.qty * x.rate);
+
+          // delete
+          const delCell = document.createElement("div");
+          delCell.className = "del-cell";
+          const del = document.createElement("button");
+          del.className = "del-btn";
+          del.type = "button";
+          del.setAttribute("aria-label", "Remove line item");
+          del.innerHTML =
+            '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+            'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+            '<path d="M5 7h14" /><path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7" />' +
+            '<path d="M7 7l1 12.5A1.5 1.5 0 0 0 9.5 21h5a1.5 1.5 0 0 0 1.5-1.5L17 7" /></svg>';
+          del.addEventListener("click", async () => {
+            const inv = await api("/api/items/" + x.id, "DELETE");
+            if (inv) applyInvoice(inv);
+          });
+          delCell.append(del);
+
+          row.append(left, qtyCell, rateCell, amount, delCell);
+          root.append(row);
+        }
+      }
+
+      // Apply a full invoice payload from the backend to the UI/state.
+      function applyInvoice(inv) {
+        items = inv.items;
+        taxRate = inv.tax_rate;
+        $("tb-title").textContent = "Invoice " + inv.number;
+        $("tb-status").textContent = inv.status;
+        $("from-name").value = inv.from.name;
+        $("from-lines").textContent = inv.from.lines;
+        $("inv-number").value = inv.number;
+        $("inv-status").value = inv.status;
+        $("inv-issued").value = inv.issued;
+        $("inv-due").value = inv.due;
+        $("bill-name").value = inv.billed_to.name;
+        $("bill-lines").textContent = inv.billed_to.lines;
+        $("tax-rate").value = String(taxRate);
+        $("foot").textContent = inv.note;
+        renderItems();
+        recompute();
+      }
+
+      // Wire the header / meta editable fields once (after first load).
+      function wireHeader() {
+        const single = (el, field, isCE = false, after) => {
+          wireEdit(el, {
+            isCE,
+            onLive: after,
+            save: (v) => patchInvoice({ [field]: v }),
+          });
+        };
+        single($("from-name"), "from_name");
+        single($("from-lines"), "from_lines", true);
+        single($("inv-number"), "number", false, (v) => {
+          $("tb-title").textContent = "Invoice " + v;
+        });
+        single($("inv-status"), "status", false, (v) => {
+          $("tb-status").textContent = v;
+        });
+        single($("inv-issued"), "issued");
+        single($("inv-due"), "due");
+        single($("bill-name"), "bill_name");
+        single($("bill-lines"), "bill_lines", true);
+        single($("foot"), "note", true);
+
+        // tax rate: live recompute (0..100, non-numeric -> 0), debounce-persist
+        const tax = $("tax-rate");
+        let tt = null;
+        const applyTax = () => {
+          let v = numVal(tax.value);
+          if (v > 100) v = 100;
+          taxRate = v;
+          recompute();
+          clearTimeout(tt);
+          tt = setTimeout(() => patchInvoice({ tax_rate: v }), 350);
+        };
+        tax.addEventListener("input", applyTax);
+        tax.addEventListener("blur", () => {
+          let v = numVal(tax.value);
+          if (v > 100) v = 100;
+          taxRate = v;
+          tax.value = String(v);
+          recompute();
+          patchInvoice({ tax_rate: v });
+        });
+      }
+
+      async function load() {
+        const inv = await fetch("/api/invoice").then((r) => r.json());
+        applyInvoice(inv);
+        wireHeader();
+        $("paper").hidden = false;
+      }
+
+      $("add-item").addEventListener("click", async () => {
+        const inv = await api("/api/items", "POST", { descr: "", detail: "", qty: 1, rate: 0 });
+        if (inv) applyInvoice(inv);
+      });
+
+      $("export").addEventListener("click", () => window.print());
+
+      load();
+    </script>
+  </body>
+</html>

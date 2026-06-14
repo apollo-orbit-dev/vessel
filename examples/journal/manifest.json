@@ -1,0 +1,10 @@
+{
+  "format_version": 1,
+  "name": "Journal",
+  "version": "1.0.0",
+  "ui": "ui/index.html",
+  "backend": "app.main:app",
+  "data": "data/store.sqlite",
+  "python": ">=3.12",
+  "packages": ["fastapi"]
+}

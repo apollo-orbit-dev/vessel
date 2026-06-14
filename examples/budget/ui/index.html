@@ -1,0 +1,901 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Budget</title>
+    <!-- Layout only — all colors come from the Vessel theme (--vessel-* tokens
+         + base component styles injected by the host). Toggle light/dark or the
+         theme in the host and this UI follows. Per-category hues use a fixed
+         oklch ramp (oc()) since those are not host tokens; everything else is
+         theme-driven. Every number is set in var(--vessel-font-mono). -->
+    <style>
+      html, body { height: 100%; }
+      body { margin: 0; padding: 0; font-family: var(--vessel-font); color: var(--vessel-text); }
+      .mono { font-family: var(--vessel-font-mono); letter-spacing: -0.01em; }
+      .muted { color: var(--vessel-text-muted); }
+      /* A second, fainter muted level (textMuted vs textMid in the handoff). */
+      .muted2 { color: color-mix(in srgb, var(--vessel-text-muted) 70%, var(--vessel-text)); }
+
+      .app { display: flex; flex-direction: column; height: 100vh; background: var(--vessel-bg); }
+
+      /* ---- summary band (toolHeader → surface) ---- */
+      .summary {
+        padding: 20px 28px 18px;
+        background: var(--vessel-surface);
+        border-bottom: 1px solid var(--vessel-border);
+      }
+      .summary-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 16px; }
+      .summary-head .title { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+      .summary-head .meta { font-size: 11.5px; }
+      .month-nav { display: inline-flex; align-items: center; gap: 4px; }
+      .month-nav .month-label {
+        font-size: 12px; font-weight: 600; letter-spacing: -0.01em;
+        min-width: 92px; text-align: center; color: var(--vessel-text);
+      }
+      .month-btn {
+        border: 1px solid var(--vessel-border); background: transparent;
+        color: var(--vessel-text-muted); cursor: pointer; line-height: 0;
+        padding: 3px; border-radius: var(--vessel-radius);
+        display: inline-flex; align-items: center; justify-content: center;
+      }
+      .month-btn:hover:not(:disabled) { color: var(--vessel-text); border-color: var(--vessel-text-muted); }
+      .month-btn:disabled { opacity: 0.4; cursor: default; }
+      .stats { display: flex; gap: 40px; }
+      .stat .label {
+        font-size: 10px; font-weight: 600; letter-spacing: 0.07em;
+        text-transform: uppercase; color: var(--vessel-text-muted); margin-bottom: 7px;
+      }
+      .stat .value { font-family: var(--vessel-font-mono); letter-spacing: -0.02em; line-height: 1; }
+      .stat .value.big { font-size: 32px; font-weight: 600; }
+      .stat .value.sub { font-size: 24px; font-weight: 600; }
+      .stat .value.mid { color: var(--vessel-text-muted); }
+      .stat .value.ok { color: var(--vessel-ok); }
+      .stat .value.neg { color: var(--vessel-danger); }
+      .stack {
+        margin-top: 16px; height: 8px; border-radius: 5px;
+        background: var(--vessel-border); overflow: hidden; display: flex;
+      }
+      .stack > span { display: block; height: 100%; }
+
+      /* ---- body grid ---- */
+      .body { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 326px; }
+
+      .left { display: flex; flex-direction: column; min-height: 0; }
+      .chips { display: flex; gap: 5px; padding: 13px 24px 11px; flex-wrap: wrap; }
+      .chip {
+        display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px;
+        border-radius: 14px; border: 1px solid var(--vessel-border);
+        background: transparent; color: var(--vessel-text-muted);
+        cursor: pointer; font-family: var(--vessel-font); font-size: 12px; font-weight: 500;
+      }
+      .chip .dot { width: 8px; height: 8px; border-radius: 50%; }
+      .chip.on {
+        border-color: color-mix(in srgb, var(--vessel-accent) 35%, transparent);
+        background: color-mix(in srgb, var(--vessel-accent) 12%, transparent);
+        color: var(--vessel-accent); font-weight: 600;
+      }
+      .tx-list { flex: 1; min-height: 0; overflow-y: auto; }
+      .tx {
+        display: grid; grid-template-columns: 64px 1fr 96px 28px 28px;
+        gap: 14px; align-items: center; padding: 12px 24px;
+        border-top: 1px solid var(--vessel-border);
+      }
+      .tx .date { font-size: 12px; }
+      .tx .merchant {
+        display: inline-flex; align-items: center; gap: 9px;
+        font-size: 13.5px; color: var(--vessel-text); overflow: hidden;
+      }
+      .tx .merchant .dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 8px; }
+      .tx .merchant span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .tx .amount { text-align: right; font-size: 13.5px; color: var(--vessel-text); }
+      .tx .del {
+        border: none; background: transparent; cursor: pointer; padding: 2px;
+        color: var(--vessel-text-muted); opacity: 0; line-height: 0;
+        display: inline-flex; align-items: center; justify-content: center;
+      }
+      .tx .edit {
+        border: none; background: transparent; cursor: pointer; padding: 2px;
+        color: var(--vessel-text-muted); opacity: 0; line-height: 0;
+        display: inline-flex; align-items: center; justify-content: center;
+      }
+      .tx:hover { background: color-mix(in srgb, var(--vessel-text) 4%, transparent); }
+      .tx:hover .del, .tx:hover .edit { opacity: 1; }
+      .tx .del:hover { color: var(--vessel-danger); }
+      .tx .edit:hover { color: var(--vessel-accent); }
+      .empty { padding: 26px 24px; }
+
+      /* inline transaction edit row (reuses the add-row layout) */
+      .tx.editing {
+        display: grid; grid-template-columns: 130px 1fr 110px 80px auto;
+        gap: 10px; align-items: center; padding: 11px 24px;
+        background: color-mix(in srgb, var(--vessel-accent) 6%, transparent);
+      }
+      .tx.editing input, .tx.editing select {
+        font-family: var(--vessel-font); font-size: 12.5px; padding: 5px 8px;
+        min-width: 0; width: 100%; box-sizing: border-box;
+      }
+      .tx.editing input.amount-in { font-family: var(--vessel-font-mono); text-align: right; }
+      .tx.editing .edit-actions { display: inline-flex; gap: 6px; }
+      .tx.editing .edit-actions button { padding: 4px 10px; font-size: 12px; }
+
+      /* add-transaction row */
+      .add-row {
+        display: grid; grid-template-columns: 130px 1fr 110px 96px 28px;
+        gap: 10px; align-items: center; padding: 12px 24px;
+        border-top: 1px solid var(--vessel-border);
+        background: color-mix(in srgb, var(--vessel-surface) 60%, var(--vessel-bg));
+      }
+      .add-row input, .add-row select {
+        font-family: var(--vessel-font); font-size: 12.5px; padding: 5px 8px;
+        min-width: 0; width: 100%; box-sizing: border-box;
+      }
+      .add-row input.amount-in { font-family: var(--vessel-font-mono); text-align: right; }
+      .add-row .add-btn { padding: 4px 0; line-height: 0; }
+
+      /* ---- right panel ---- */
+      .right {
+        border-left: 1px solid var(--vessel-border); background: var(--vessel-surface);
+        padding: 20px 24px; display: flex; flex-direction: column;
+        min-height: 0; overflow-y: auto;
+      }
+      .cap {
+        font-size: 10.5px; font-weight: 600; letter-spacing: 0.07em;
+        text-transform: uppercase; color: var(--vessel-text-muted);
+      }
+      .bars { display: flex; flex-direction: column; gap: 11px; margin-top: 14px; }
+      .bar-head {
+        display: flex; justify-content: space-between; font-size: 12px;
+        color: var(--vessel-text-muted); margin-bottom: 5px;
+      }
+      .bar-head .amt { font-family: var(--vessel-font-mono); font-size: 11.5px; color: var(--vessel-text); }
+      .track { height: 6px; border-radius: 4px; background: var(--vessel-border); overflow: hidden; }
+      .track > div { height: 100%; }
+      .rule { height: 1px; background: var(--vessel-border); margin: 20px 0 16px; }
+
+      .trend-head { display: flex; align-items: baseline; justify-content: space-between; }
+      .trend-head .proj { font-family: var(--vessel-font-mono); font-size: 11px; color: var(--vessel-text-muted); }
+      .trend { position: relative; display: flex; align-items: flex-end; gap: 8px; height: 96px; margin-top: 14px; }
+      .budget-line {
+        position: absolute; left: 0; right: 0;
+        border-top: 1px dashed color-mix(in srgb, var(--vessel-border) 60%, var(--vessel-text-muted));
+      }
+      .col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; height: 100%; justify-content: flex-end; }
+      .col .forecast { width: 100%; border-radius: 4px 4px 0 0; background: color-mix(in srgb, var(--vessel-accent) 12%, transparent); }
+      .col .barfill { width: 100%; background: color-mix(in srgb, var(--vessel-border) 55%, var(--vessel-text-muted)); border-radius: 4px; }
+      .col.cur .barfill { background: var(--vessel-accent); border-radius: 0; }
+      .col .m { font-family: var(--vessel-font-mono); font-size: 9.5px; color: var(--vessel-text-muted); }
+      .col.cur .m { color: var(--vessel-text); }
+
+      /* ---- footer ---- */
+      .footer {
+        display: flex; align-items: center; gap: 12px; padding: 9px 28px;
+        border-top: 1px solid var(--vessel-border); background: var(--vessel-surface);
+      }
+      .footer .privacy {
+        display: inline-flex; align-items: center; gap: 7px;
+        font-family: var(--vessel-font-mono); font-size: 11px; color: var(--vessel-text-muted);
+      }
+      .footer .shown { font-family: var(--vessel-font-mono); font-size: 11px; color: var(--vessel-text-muted); }
+
+      /* ---- panel section headers with an action ---- */
+      .cap-row { display: flex; align-items: center; justify-content: space-between; }
+      .link-btn {
+        border: none; background: transparent; cursor: pointer; padding: 2px 4px;
+        font-family: var(--vessel-font); font-size: 11px; font-weight: 600;
+        color: var(--vessel-accent);
+      }
+      .link-btn:hover { text-decoration: underline; }
+
+      /* ---- modal dialog ---- */
+      dialog.sheet {
+        border: 1px solid var(--vessel-border); border-radius: var(--vessel-radius);
+        background: var(--vessel-surface); color: var(--vessel-text);
+        padding: 0; width: min(440px, 92vw); max-height: 86vh;
+        font-family: var(--vessel-font);
+      }
+      dialog.sheet::backdrop { background: color-mix(in srgb, var(--vessel-text) 32%, transparent); }
+      .sheet-head {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 16px 20px; border-bottom: 1px solid var(--vessel-border);
+      }
+      .sheet-head h2 { margin: 0; font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
+      .sheet-head .x {
+        border: none; background: transparent; cursor: pointer; line-height: 0;
+        color: var(--vessel-text-muted); padding: 4px;
+      }
+      .sheet-head .x:hover { color: var(--vessel-text); }
+      .sheet-body { padding: 16px 20px; overflow-y: auto; }
+      .field-row { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+      .field-row label {
+        font-size: 10px; font-weight: 600; letter-spacing: 0.07em;
+        text-transform: uppercase; color: var(--vessel-text-muted);
+      }
+      .field-row input { width: 100%; box-sizing: border-box; }
+      .field-row input.mono { font-family: var(--vessel-font-mono); }
+      .sheet-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+      .err { color: var(--vessel-danger); font-size: 12px; margin: 0 0 12px; min-height: 0; }
+
+      /* hue ramp picker */
+      .hue-ramp { display: flex; flex-wrap: wrap; gap: 8px; }
+      .hue-ramp button {
+        width: 26px; height: 26px; border-radius: 50%; padding: 0;
+        border: 2px solid transparent; cursor: pointer; line-height: 0;
+      }
+      .hue-ramp button.on { border-color: var(--vessel-text); }
+
+      /* category manager list */
+      .cat-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
+      .cat-item {
+        display: grid; grid-template-columns: 14px 1fr auto;
+        gap: 10px; align-items: center;
+      }
+      .cat-item .dot { width: 10px; height: 10px; border-radius: 50%; }
+      .cat-item .cname { font-size: 13px; }
+      .cat-item .cnt { font-family: var(--vessel-font-mono); font-size: 11px; color: var(--vessel-text-muted); }
+      .cat-item .ops { display: inline-flex; gap: 4px; }
+      .cat-item .ops button {
+        border: none; background: transparent; cursor: pointer; padding: 3px;
+        color: var(--vessel-text-muted); line-height: 0;
+      }
+      .cat-item .ops button:hover { color: var(--vessel-text); }
+      .cat-item .ops button.danger:hover { color: var(--vessel-danger); }
+      .add-cat-head { font-size: 10px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--vessel-text-muted); margin-bottom: 10px; }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <!-- summary band -->
+      <div class="summary">
+        <div class="summary-head">
+          <span class="title">Budget</span>
+          <div class="month-nav">
+            <button id="month-prev" class="month-btn" aria-label="Previous month" title="Previous month">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6" /></svg>
+            </button>
+            <span class="month-label mono" id="month-label"></span>
+            <button id="month-next" class="month-btn" aria-label="Next month" title="Next month">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6" /></svg>
+            </button>
+          </div>
+          <span class="meta mono muted" id="period"></span>
+          <div style="flex:1"></div>
+          <button id="open-settings" class="link-btn" title="Edit budget &amp; period">Settings</button>
+        </div>
+        <div class="stats">
+          <div class="stat">
+            <div class="label">Spent</div>
+            <div class="value big" id="spent">$0</div>
+          </div>
+          <div class="stat">
+            <div class="label">Monthly budget</div>
+            <div class="value sub mid" id="budget">$0</div>
+          </div>
+          <div class="stat">
+            <div class="label">Left to spend</div>
+            <div class="value sub" id="left">$0</div>
+          </div>
+        </div>
+        <div class="stack" id="stack"></div>
+      </div>
+
+      <!-- body -->
+      <div class="body">
+        <div class="left">
+          <div class="chips" id="chips"></div>
+          <div class="tx-list" id="tx-list"></div>
+          <div class="add-row">
+            <input id="in-date" type="date" class="mono" aria-label="Transaction date" />
+            <input id="in-merchant" placeholder="Merchant" maxlength="120" />
+            <select id="in-category"></select>
+            <input id="in-amount" class="amount-in" placeholder="0" inputmode="numeric" />
+            <button id="add" class="vessel-primary add-btn" title="Add transaction" aria-label="Add transaction">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M12 5v14M5 12h14" /></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- category + trend -->
+        <div class="right">
+          <div class="cap-row">
+            <span class="cap">By category</span>
+            <button id="open-cats" class="link-btn" title="Manage categories">Manage</button>
+          </div>
+          <div class="bars" id="bars"></div>
+
+          <div class="rule"></div>
+          <div class="trend-head">
+            <span class="cap">6-month trend</span>
+            <span class="proj" id="proj"></span>
+          </div>
+          <div class="trend" id="trend"></div>
+        </div>
+      </div>
+
+      <!-- footer -->
+      <div class="footer">
+        <span class="privacy">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="1.6" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>
+          <span id="privacy-text">budget.vessel · never leaves this device</span>
+        </span>
+        <div style="flex:1"></div>
+        <span class="shown" id="shown"></span>
+      </div>
+    </div>
+
+    <!-- Settings dialog -->
+    <dialog class="sheet" id="settings-dlg">
+      <div class="sheet-head">
+        <h2>Budget settings</h2>
+        <button class="x" data-close="settings-dlg" aria-label="Close" title="Close">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+        </button>
+      </div>
+      <div class="sheet-body">
+        <p class="err" id="settings-err" hidden></p>
+        <div class="field-row">
+          <label for="set-budget">Monthly budget</label>
+          <input id="set-budget" class="mono" inputmode="numeric" placeholder="2800" />
+        </div>
+        <div class="field-row">
+          <label for="set-period">Period / title</label>
+          <input id="set-period" maxlength="120" placeholder="June 2026 · personal" />
+        </div>
+        <div class="sheet-actions">
+          <button type="button" data-close="settings-dlg">Cancel</button>
+          <button class="vessel-primary" id="save-settings">Save</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- Category manager dialog -->
+    <dialog class="sheet" id="cats-dlg">
+      <div class="sheet-head">
+        <h2>Categories</h2>
+        <button class="x" data-close="cats-dlg" aria-label="Close" title="Close">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+        </button>
+      </div>
+      <div class="sheet-body">
+        <p class="err" id="cats-err" hidden></p>
+        <div class="cat-list" id="cat-list"></div>
+        <div class="add-cat-head">Add a category</div>
+        <div class="field-row">
+          <label for="new-cat-name">Name</label>
+          <input id="new-cat-name" maxlength="60" placeholder="Savings" />
+        </div>
+        <div class="field-row">
+          <label>Color</label>
+          <div class="hue-ramp" id="new-cat-hues"></div>
+        </div>
+        <div class="sheet-actions">
+          <button class="vessel-primary" id="add-cat">Add category</button>
+        </div>
+      </div>
+    </dialog>
+
+    <script>
+      const j = (r) => r.json();
+      // Per-category hue → oklch color, mirroring the prototype's oc().
+      const oc = (hue) => `oklch(0.56 0.1 ${hue})`;
+      const fmt = (n) => "$" + Number(n).toLocaleString("en-US");
+
+      let state = null;
+      let cat = "All"; // selected category filter
+      let editingId = null; // transaction id currently being edited inline
+      let newCatHue = null; // selected hue in the "add category" form
+      let month = null; // selected month (YYYY-MM); null => server default (latest)
+
+      const $ = (id) => document.getElementById(id);
+
+      // Add/subtract whole months from a YYYY-MM string, returning YYYY-MM.
+      function shiftMonth(ym, delta) {
+        const y = parseInt(ym.slice(0, 4), 10);
+        const m = parseInt(ym.slice(5, 7), 10) - 1 + delta; // 0-based
+        const ny = y + Math.floor(m / 12);
+        const nm = ((m % 12) + 12) % 12;
+        return ny + "-" + String(nm + 1).padStart(2, "0");
+      }
+
+      async function load() {
+        const url = month ? "/api/state?month=" + encodeURIComponent(month) : "/api/state";
+        state = await fetch(url).then(j);
+        month = state.month; // adopt the server's resolved month
+        render();
+      }
+
+      function hueOf(name) {
+        const c = state.categories.find((c) => c.name === name);
+        return c ? c.hue : 230;
+      }
+
+      function render() {
+        renderMonthNav();
+        renderSummary();
+        renderChips();
+        renderTx();
+        renderBars();
+        renderTrend();
+        renderCategorySelect();
+        renderDateDefault();
+        renderFooter();
+      }
+
+      function renderDateDefault() {
+        // Pre-fill the add-row date to the selected month so a quick add lands in
+        // the month being viewed. The user can still pick any date.
+        const el = $("in-date");
+        const today = new Date().toISOString().slice(0, 10);
+        // Default to today if we're viewing the current month, else mid-month.
+        const want = today.slice(0, 7) === state.month ? today : state.month + "-15";
+        el.value = want;
+        // Allow any date from the selected month's start up to today (or the
+        // pre-filled mid-month value for a past month), so adds land sensibly.
+        el.max = want > today ? want : today;
+      }
+
+      function renderMonthNav() {
+        $("month-label").textContent = state.month_label;
+        // Navigate among months that actually have data (newest-first list). The
+        // selected month is always one of them (the server only returns months with
+        // transactions, or its latest fallback).
+        const months = state.months || [];
+        const idx = months.indexOf(state.month);
+        // Prev = older = a later index (list is newest-first); Next = newer = earlier index.
+        $("month-prev").disabled = idx < 0 || idx >= months.length - 1;
+        $("month-next").disabled = idx <= 0;
+      }
+
+      function gotoMonth(delta) {
+        // delta: -1 = older, +1 = newer (matches prev/next chevrons).
+        const months = state.months || [];
+        const idx = months.indexOf(state.month);
+        if (idx < 0) return;
+        const next = idx - delta; // newest-first: older => higher index
+        if (next < 0 || next >= months.length) return;
+        month = months[next];
+        load();
+      }
+
+      function renderSummary() {
+        $("period").textContent = state.period;
+        $("spent").textContent = fmt(state.spent);
+        $("budget").textContent = fmt(state.budget);
+        const left = $("left");
+        left.textContent = fmt(state.left);
+        left.className = "value sub " + (state.left >= 0 ? "ok" : "neg");
+
+        const stack = $("stack");
+        stack.innerHTML = "";
+        for (const c of state.by_category) {
+          const seg = document.createElement("span");
+          seg.style.width = (c.amount / state.budget) * 100 + "%";
+          seg.style.background = oc(c.hue);
+          seg.title = c.name + " " + fmt(c.amount);
+          stack.append(seg);
+        }
+      }
+
+      function renderChips() {
+        const chips = $("chips");
+        chips.innerHTML = "";
+        const names = ["All", ...state.categories.map((c) => c.name)];
+        for (const name of names) {
+          const on = cat === name;
+          const b = document.createElement("button");
+          b.className = "chip" + (on ? " on" : "");
+          if (name !== "All") {
+            const dot = document.createElement("span");
+            dot.className = "dot";
+            dot.style.background = oc(hueOf(name));
+            b.append(dot);
+          }
+          b.append(document.createTextNode(name));
+          b.onclick = () => { cat = name; render(); };
+          chips.append(b);
+        }
+      }
+
+      function filteredTx() {
+        return cat === "All"
+          ? state.transactions
+          : state.transactions.filter((x) => x.category === cat);
+      }
+
+      function renderTx() {
+        const list = $("tx-list");
+        list.innerHTML = "";
+        const tx = filteredTx();
+        if (!tx.length) {
+          const e = document.createElement("div");
+          e.className = "empty muted";
+          e.textContent = "No transactions in this category.";
+          list.append(e);
+          return;
+        }
+        for (const x of tx) {
+          if (editingId === x.id) {
+            list.append(editRow(x));
+            continue;
+          }
+          const row = document.createElement("div");
+          row.className = "tx";
+
+          const date = document.createElement("span");
+          date.className = "date mono muted";
+          date.textContent = x.day;
+
+          const merchant = document.createElement("span");
+          merchant.className = "merchant";
+          const dot = document.createElement("span");
+          dot.className = "dot";
+          dot.style.background = oc(x.hue);
+          const mname = document.createElement("span");
+          mname.textContent = x.merchant;
+          merchant.append(dot, mname);
+
+          const amount = document.createElement("span");
+          amount.className = "amount mono";
+          amount.textContent = "−" + fmt(x.amount).slice(1);
+
+          const edit = document.createElement("button");
+          edit.className = "edit";
+          edit.title = "Edit";
+          edit.setAttribute("aria-label", "Edit transaction");
+          edit.innerHTML =
+            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17v3z" /><path d="M13.5 6.5l3 3" /></svg>';
+          edit.onclick = () => { editingId = x.id; render(); };
+
+          const del = document.createElement("button");
+          del.className = "del";
+          del.title = "Delete";
+          del.setAttribute("aria-label", "Delete transaction");
+          del.innerHTML =
+            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7h14M9 7V5h6v2M7 7l1 12h8l1-12" /></svg>';
+          del.onclick = () => {
+            if (confirm("Delete this transaction (" + x.merchant + ")?")) deleteTx(x.id);
+          };
+
+          row.append(date, merchant, amount, edit, del);
+          list.append(row);
+        }
+      }
+
+      function editRow(x) {
+        const row = document.createElement("div");
+        row.className = "tx editing";
+
+        const dateIn = document.createElement("input");
+        dateIn.type = "date";
+        dateIn.className = "mono";
+        dateIn.value = x.date;
+
+        const merchant = document.createElement("input");
+        merchant.value = x.merchant;
+        merchant.maxLength = 120;
+
+        const sel = document.createElement("select");
+        for (const c of state.categories) {
+          const opt = document.createElement("option");
+          opt.value = c.id;
+          opt.textContent = c.name;
+          sel.append(opt);
+        }
+        sel.value = x.category_id;
+
+        const amount = document.createElement("input");
+        amount.className = "amount-in mono";
+        amount.value = x.amount;
+        amount.inputMode = "numeric";
+
+        const actions = document.createElement("div");
+        actions.className = "edit-actions";
+        const save = document.createElement("button");
+        save.className = "vessel-primary";
+        save.textContent = "Save";
+        const cancel = document.createElement("button");
+        cancel.textContent = "Cancel";
+        cancel.onclick = () => { editingId = null; render(); };
+        save.onclick = () =>
+          saveEdit(x.id, {
+            tx_date: dateIn.value,
+            merchant: merchant.value.trim(),
+            category_id: parseInt(sel.value, 10),
+            amount: Math.floor(Number(amount.value)),
+          });
+        actions.append(save, cancel);
+
+        row.append(dateIn, merchant, sel, amount, actions);
+        return row;
+      }
+
+      async function saveEdit(id, body) {
+        if (!body.tx_date || !body.merchant || !body.category_id || !(body.amount >= 0)) return;
+        const res = await fetch("/api/transactions/" + id, {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) return;
+        editingId = null;
+        await load();
+      }
+
+      function renderBars() {
+        const bars = $("bars");
+        bars.innerHTML = "";
+        const max = state.by_category.length ? state.by_category[0].amount : 1;
+        for (const c of state.by_category) {
+          const wrap = document.createElement("div");
+          const head = document.createElement("div");
+          head.className = "bar-head";
+          const name = document.createElement("span");
+          name.textContent = c.name;
+          const amt = document.createElement("span");
+          amt.className = "amt";
+          amt.textContent = fmt(c.amount);
+          head.append(name, amt);
+          const track = document.createElement("div");
+          track.className = "track";
+          const fill = document.createElement("div");
+          fill.style.width = (c.amount / max) * 100 + "%";
+          fill.style.background = oc(c.hue);
+          track.append(fill);
+          wrap.append(head, track);
+          bars.append(wrap);
+        }
+      }
+
+      function renderTrend() {
+        $("proj").textContent = "proj. " + fmt(state.projection);
+        const trend = $("trend");
+        trend.innerHTML = "";
+        const max = Math.max(
+          state.budget,
+          state.projection,
+          ...state.trend.map((x) => x.amount)
+        );
+
+        // dashed budget line
+        const line = document.createElement("div");
+        line.className = "budget-line";
+        line.style.bottom = (state.budget / max) * 100 + "%";
+        trend.append(line);
+
+        state.trend.forEach((x) => {
+          const cur = !!x.current; // the selected month, highlighted
+          const col = document.createElement("div");
+          col.className = "col" + (cur ? " cur" : "");
+          if (cur) {
+            const fc = document.createElement("div");
+            fc.className = "forecast";
+            const fh = Math.max(0, ((state.projection - x.amount) / max) * 100);
+            fc.style.height = fh + "%";
+            col.append(fc);
+          }
+          const bar = document.createElement("div");
+          bar.className = "barfill";
+          bar.style.height = (x.amount / max) * 100 + "%";
+          const m = document.createElement("span");
+          m.className = "m";
+          m.textContent = x.month;
+          col.append(bar, m);
+          trend.append(col);
+        });
+      }
+
+      function renderCategorySelect() {
+        const sel = $("in-category");
+        const prev = sel.value;
+        sel.innerHTML = "";
+        for (const c of state.categories) {
+          const opt = document.createElement("option");
+          opt.value = c.id;
+          opt.textContent = c.name;
+          sel.append(opt);
+        }
+        if (prev) sel.value = prev;
+      }
+
+      function renderFooter() {
+        const total = state.transactions.length;
+        $("privacy-text").textContent =
+          "budget.vessel · " + total + " transaction" + (total === 1 ? "" : "s") +
+          " · never leaves this device";
+        $("shown").textContent = filteredTx().length + " shown";
+      }
+
+      async function addTx() {
+        const tx_date = $("in-date").value;
+        const merchant = $("in-merchant").value.trim();
+        const category_id = parseInt($("in-category").value, 10);
+        const amount = Math.floor(Number($("in-amount").value));
+        if (!tx_date || !merchant || !category_id || !(amount >= 0)) return;
+        const res = await fetch("/api/transactions", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ tx_date, merchant, category_id, amount }),
+        });
+        if (!res.ok) return;
+        // Jump to the month the new transaction landed in so it's visible.
+        month = tx_date.slice(0, 7);
+        $("in-merchant").value = "";
+        $("in-amount").value = "";
+        await load();
+      }
+
+      async function deleteTx(id) {
+        await fetch("/api/transactions/" + id, { method: "DELETE" });
+        await load();
+      }
+
+      $("add").onclick = addTx;
+      $("in-amount").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") addTx();
+      });
+      $("month-prev").onclick = () => gotoMonth(-1);
+      $("month-next").onclick = () => gotoMonth(1);
+
+      // ---- dialogs: generic close wiring ----
+      document.querySelectorAll("[data-close]").forEach((b) => {
+        b.onclick = () => $(b.getAttribute("data-close")).close();
+      });
+      function showErr(el, msg) { el.textContent = msg; el.hidden = false; }
+      function clearErr(el) { el.textContent = ""; el.hidden = true; }
+      async function errorDetail(res) {
+        try { return (await res.json()).detail || "Request failed."; }
+        catch { return "Request failed."; }
+      }
+
+      // ---- settings dialog ----
+      $("open-settings").onclick = () => {
+        clearErr($("settings-err"));
+        $("set-budget").value = state.budget;
+        $("set-period").value = state.period;
+        $("settings-dlg").showModal();
+      };
+      $("save-settings").onclick = async () => {
+        const budget = Math.floor(Number($("set-budget").value));
+        const period = $("set-period").value.trim();
+        if (!(budget >= 0)) return showErr($("settings-err"), "Budget must be a number ≥ 0.");
+        if (!period) return showErr($("settings-err"), "Period is required.");
+        const res = await fetch("/api/settings", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ budget, period }),
+        });
+        if (!res.ok) return showErr($("settings-err"), await errorDetail(res));
+        $("settings-dlg").close();
+        await load();
+      };
+
+      // ---- category manager dialog ----
+      $("open-cats").onclick = () => {
+        clearErr($("cats-err"));
+        renderCatManager();
+        renderHueRamp();
+        $("cats-dlg").showModal();
+      };
+
+      function txCount(catId) {
+        return state.transactions.filter((t) => t.category_id === catId).length;
+      }
+
+      function renderHueRamp() {
+        const ramp = $("new-cat-hues");
+        ramp.innerHTML = "";
+        const used = new Set(state.categories.map((c) => c.hue));
+        if (newCatHue === null) {
+          newCatHue = (state.allowed_hues || []).find((h) => !used.has(h));
+          if (newCatHue === undefined) newCatHue = (state.allowed_hues || [230])[0];
+        }
+        for (const hue of state.allowed_hues || []) {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.style.background = oc(hue);
+          b.title = "Hue " + hue;
+          b.setAttribute("aria-label", "Color hue " + hue);
+          if (hue === newCatHue) b.classList.add("on");
+          b.onclick = () => { newCatHue = hue; renderHueRamp(); };
+          ramp.append(b);
+        }
+      }
+
+      function renderCatManager() {
+        const list = $("cat-list");
+        list.innerHTML = "";
+        for (const c of state.categories) {
+          const item = document.createElement("div");
+          item.className = "cat-item";
+
+          const dot = document.createElement("span");
+          dot.className = "dot";
+          dot.style.background = oc(c.hue);
+
+          const name = document.createElement("span");
+          name.className = "cname";
+          name.textContent = c.name;
+
+          const ops = document.createElement("div");
+          ops.className = "ops";
+          const count = txCount(c.id);
+          const cnt = document.createElement("span");
+          cnt.className = "cnt";
+          cnt.textContent = count + " tx";
+
+          const ren = document.createElement("button");
+          ren.title = "Rename";
+          ren.setAttribute("aria-label", "Rename category");
+          ren.innerHTML =
+            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17v3z" /><path d="M13.5 6.5l3 3" /></svg>';
+          ren.onclick = () => renameCat(c);
+
+          const del = document.createElement("button");
+          del.className = "danger";
+          del.title = "Delete";
+          del.setAttribute("aria-label", "Delete category");
+          del.innerHTML =
+            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7h14M9 7V5h6v2M7 7l1 12h8l1-12" /></svg>';
+          del.onclick = () => deleteCat(c);
+
+          ops.append(cnt, ren, del);
+          item.append(dot, name, ops);
+          list.append(item);
+        }
+      }
+
+      async function renameCat(c) {
+        const name = prompt("Rename category", c.name);
+        if (name === null) return;
+        const trimmed = name.trim();
+        if (!trimmed) return showErr($("cats-err"), "Name is required.");
+        const res = await fetch("/api/categories/" + c.id, {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ name: trimmed, hue: c.hue }),
+        });
+        if (!res.ok) return showErr($("cats-err"), await errorDetail(res));
+        clearErr($("cats-err"));
+        await load();
+        renderCatManager();
+      }
+
+      async function deleteCat(c) {
+        const count = txCount(c.id);
+        if (count > 0) {
+          return showErr(
+            $("cats-err"),
+            '"' + c.name + '" is used by ' + count +
+              " transaction(s). Reassign or delete them first."
+          );
+        }
+        if (!confirm('Delete the category "' + c.name + '"?')) return;
+        const res = await fetch("/api/categories/" + c.id, { method: "DELETE" });
+        if (!res.ok) return showErr($("cats-err"), await errorDetail(res));
+        clearErr($("cats-err"));
+        await load();
+        renderCatManager();
+        renderHueRamp();
+      }
+
+      $("add-cat").onclick = async () => {
+        const name = $("new-cat-name").value.trim();
+        if (!name) return showErr($("cats-err"), "Name is required.");
+        const res = await fetch("/api/categories", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ name, hue: newCatHue }),
+        });
+        if (!res.ok) return showErr($("cats-err"), await errorDetail(res));
+        clearErr($("cats-err"));
+        $("new-cat-name").value = "";
+        newCatHue = null;
+        await load();
+        renderCatManager();
+        renderHueRamp();
+      };
+
+      load();
+    </script>
+  </body>
+</html>

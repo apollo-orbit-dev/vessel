@@ -16,7 +16,16 @@ describe("vessel new", () => {
       expect(existsSync(join(dir, f))).toBe(true);
     }
     // Routes are async (the Pyodide no-threads rule).
-    expect(readFileSync(join(dir, "app/main.py"), "utf8")).toContain("async def");
+    const mainPy = readFileSync(join(dir, "app/main.py"), "utf8");
+    expect(mainPy).toContain("async def");
+    // Scaffold teaches the reusable SQLite helpers + the safe pattern.
+    for (const helper of ["def query_all", "def query_one", "def execute"]) {
+      expect(mainPy).toContain(helper);
+    }
+    expect(mainPy).toContain("VALUES (?)"); // parameterized placeholders
+    // No string-built SQL (f-strings / % / .format into a query) — the anti-pattern.
+    expect(mainPy).not.toMatch(/(execute|query_all|query_one)\(\s*f["']/);
+    expect(mainPy).not.toMatch(/\.format\(/);
 
     // It builds, and the host loader accepts the result with the chosen name.
     const out = await buildBundle({ dir, out: join(parent, "out.vessel") });

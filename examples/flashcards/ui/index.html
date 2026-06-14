@@ -1,0 +1,593 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Flashcards</title>
+    <!-- Layout only — all colors come from the Vessel theme (--vessel-* tokens
+         + base component styles injected by the host). Toggle light/dark or the
+         theme in the host and this UI follows. Every number the user reads is
+         set in the host's mono font (--vessel-font-mono). -->
+    <style>
+      html, body { height: 100%; }
+      body {
+        margin: 0; padding: 0; height: 100vh; overflow: hidden;
+        font-family: var(--vessel-font); color: var(--vessel-text);
+        background: var(--vessel-bg);
+      }
+      .tool { height: 100%; display: flex; flex-direction: column; }
+
+      /* header */
+      .header {
+        display: flex; align-items: baseline; gap: 12px; padding: 15px 26px;
+        background: var(--vessel-surface); border-bottom: 1px solid var(--vessel-border);
+      }
+      .deck-name {
+        font-size: 16px; font-weight: 600; letter-spacing: -0.01em;
+        background: none; border: none; padding: 0; margin: 0; color: inherit;
+        font-family: inherit; cursor: pointer; text-align: left;
+      }
+      .deck-name:hover { color: var(--vessel-accent); }
+      .meta { font-family: var(--vessel-font-mono); font-size: 11.5px; color: var(--vessel-text-muted); }
+      .spacer { flex: 1; }
+
+      /* Study / Cards tabs */
+      .tabs { display: inline-flex; gap: 2px; padding: 2px; border-radius: 8px; background: var(--vessel-field); border: 1px solid var(--vessel-border); }
+      .tab {
+        font: inherit; font-size: 12.5px; font-weight: 500; padding: 5px 14px;
+        border: none; border-radius: 6px; background: none; color: var(--vessel-text-muted);
+        cursor: pointer; transition: background 0.12s, color 0.12s;
+      }
+      .tab:hover { color: var(--vessel-text); }
+      .tab.active { background: var(--vessel-surface); color: var(--vessel-text); box-shadow: 0 1px 2px rgba(20,22,28,0.06); }
+
+      /* card stage */
+      .stage {
+        flex: 1; min-height: 0; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; gap: 26px; padding: 20px;
+      }
+      .card-wrap { width: 540px; max-width: 92vw; height: 290px; cursor: pointer; }
+      .card {
+        width: 100%; height: 100%; border-radius: 14px; position: relative;
+        box-sizing: border-box; padding: 0 30px;
+        transform: scaleX(1); transition: transform 0.15s ease-in-out;
+        background: var(--vessel-bg); border: 1px solid var(--vessel-border);
+        box-shadow: 0 1px 3px rgba(20,22,28,0.05);
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 16px;
+      }
+      .card.flipped {
+        background: var(--vessel-surface); border-color: var(--vessel-accent);
+        gap: 14px;
+      }
+      .card-kicker {
+        font-size: 10.5px; font-weight: 600; letter-spacing: 0.09em;
+        text-transform: uppercase; color: var(--vessel-text-muted);
+      }
+      .card.flipped .card-kicker { color: var(--vessel-accent); }
+      .card-front-word {
+        font-size: 34px; font-weight: 600; letter-spacing: -0.02em;
+        color: var(--vessel-text); text-align: center;
+      }
+      .card-back-word {
+        font-size: 30px; font-weight: 600; letter-spacing: -0.018em;
+        color: var(--vessel-text); text-align: center;
+      }
+      .card-note { font-size: 13px; line-height: 1.5; color: var(--vessel-text-muted); text-align: center; }
+      .flip-hint {
+        position: absolute; bottom: 16px; font-family: var(--vessel-font-mono);
+        font-size: 11px; color: var(--vessel-text-muted);
+      }
+
+      /* ratings */
+      .ratings { height: 64px; display: flex; align-items: center; gap: 10px; }
+      .rating-btn {
+        display: flex; flex-direction: column; align-items: center; gap: 4px;
+        width: 96px; padding: 9px 0; border-radius: 9px;
+        border: 1px solid var(--vessel-border); background: var(--vessel-field);
+        color: var(--vessel-text); cursor: pointer; font: inherit;
+        transition: background 0.12s, border-color 0.12s;
+      }
+      .rating-btn:hover { background: color-mix(in srgb, var(--vessel-text) 6%, transparent); }
+      .rating-btn:hover.again { border-color: var(--vessel-danger); }
+      .rating-btn:hover.good, .rating-btn:hover.easy { border-color: var(--vessel-accent); }
+      .rating-label { font-size: 13.5px; font-weight: 500; }
+      .rating-interval { font-family: var(--vessel-font-mono); font-size: 11px; }
+      .rating-btn.again .rating-interval { color: var(--vessel-danger); }
+      .rating-btn.hard .rating-interval { color: var(--vessel-text-muted); }
+      .rating-btn.good .rating-interval { color: var(--vessel-accent); }
+      .rating-btn.easy .rating-interval { color: var(--vessel-ok); }
+      .hint { font-size: 12.5px; color: var(--vessel-text-muted); }
+
+      /* footer */
+      .footer {
+        display: flex; align-items: center; gap: 14px; padding: 12px 26px;
+        border-top: 1px solid var(--vessel-border); background: var(--vessel-surface);
+      }
+      .progress-count { font-family: var(--vessel-font-mono); font-size: 11.5px; color: var(--vessel-text-muted); }
+      .progress-track {
+        flex: 1; height: 6px; border-radius: 4px; background: var(--vessel-border); overflow: hidden;
+      }
+      .progress-fill { height: 100%; background: var(--vessel-accent); transition: width 0.3s; }
+      .streak {
+        display: inline-flex; align-items: center; gap: 6px;
+        font-family: var(--vessel-font-mono); font-size: 11.5px; color: var(--vessel-text-muted);
+      }
+      .streak svg { color: var(--vessel-accent); }
+
+      .empty {
+        display: flex; flex-direction: column; align-items: center; gap: 12px;
+        text-align: center; color: var(--vessel-text-muted);
+      }
+      .empty .big { font-size: 18px; font-weight: 600; color: var(--vessel-text); }
+
+      /* Cards (manage) view */
+      .manage { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 20px 26px; gap: 16px; overflow: hidden; }
+      .manage-head { display: flex; align-items: baseline; gap: 12px; }
+      .manage-title { font-size: 15px; font-weight: 600; }
+      .card-form {
+        display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: start;
+        padding: 14px; border: 1px solid var(--vessel-border); border-radius: 10px;
+        background: var(--vessel-surface);
+      }
+      .card-form .note-field { grid-column: 1 / 3; }
+      .card-form .form-actions { grid-column: 3; grid-row: 1 / 3; display: flex; flex-direction: column; gap: 8px; justify-content: flex-start; }
+      .card-form input { width: 100%; box-sizing: border-box; }
+      .field-label { font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--vessel-text-muted); display: block; margin-bottom: 5px; }
+      .form-err { grid-column: 1 / 4; font-size: 12.5px; color: var(--vessel-danger); min-height: 0; }
+      .form-err:empty { display: none; }
+
+      .card-list { flex: 1; min-height: 0; overflow-y: auto; border: 1px solid var(--vessel-border); border-radius: 10px; }
+      .card-row {
+        display: grid; grid-template-columns: 1fr 1fr auto; gap: 14px; align-items: center;
+        padding: 12px 16px; border-bottom: 1px solid var(--vessel-border);
+      }
+      .card-row:last-child { border-bottom: none; }
+      .card-row:hover { background: color-mix(in srgb, var(--vessel-text) 4%, transparent); }
+      .cr-front { font-weight: 600; font-size: 14px; }
+      .cr-back { color: var(--vessel-text-muted); font-size: 13.5px; }
+      .cr-note { grid-column: 1 / 3; font-size: 12px; color: var(--vessel-text-muted); }
+      .cr-meta { font-family: var(--vessel-font-mono); font-size: 11px; color: var(--vessel-text-muted); }
+      .cr-actions { display: flex; gap: 8px; align-items: center; }
+      .cr-actions button { font-size: 12.5px; padding: 5px 12px; }
+      .due-pill {
+        font-family: var(--vessel-font-mono); font-size: 10px; padding: 2px 7px; border-radius: 5px;
+        border: 1px solid var(--vessel-accent); color: var(--vessel-accent);
+      }
+      .manage-empty { padding: 28px; text-align: center; color: var(--vessel-text-muted); }
+    </style>
+  </head>
+  <body>
+    <div class="tool">
+      <div class="header">
+        <button class="deck-name" id="deck-name" title="Click to rename the deck">Flashcards</button>
+        <span class="meta" id="due-meta"></span>
+        <div class="spacer"></div>
+        <div class="tabs" id="tabs">
+          <button class="tab active" data-view="study" id="tab-study">Study</button>
+          <button class="tab" data-view="cards" id="tab-cards">Cards</button>
+        </div>
+      </div>
+
+      <div class="stage" id="stage"></div>
+      <div class="manage" id="manage" style="display:none"></div>
+
+      <div class="footer">
+        <span class="progress-count" id="progress-count">0/0</span>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+        <span class="streak">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M13 3.5c.4 2.6 3.5 4 3.5 8A4.5 4.5 0 0 1 7.5 12c0-1.4.5-2.3 1.2-3.1.1 1.1.9 1.9 1.8 1.9-.7-2.8 1.3-5.6 2.5-7.3z" />
+          </svg>
+          <span id="streak-label">0-day streak</span>
+        </span>
+      </div>
+    </div>
+
+    <script>
+      const RATINGS = [
+        { id: "again", label: "Again" },
+        { id: "hard", label: "Hard" },
+        { id: "good", label: "Good" },
+        { id: "easy", label: "Easy" },
+      ];
+
+      const $stage = document.getElementById("stage");
+      const $manage = document.getElementById("manage");
+      const $deckName = document.getElementById("deck-name");
+      const $dueMeta = document.getElementById("due-meta");
+      const $progressCount = document.getElementById("progress-count");
+      const $progressFill = document.getElementById("progress-fill");
+      const $streakLabel = document.getElementById("streak-label");
+      const $tabStudy = document.getElementById("tab-study");
+      const $tabCards = document.getElementById("tab-cards");
+
+      let state = null;
+      let cards = null;        // loaded lazily for the Cards view
+      let view = "study";      // "study" | "cards"
+      let editingId = null;    // card id being edited inline, or null (= add mode)
+      let flipped = false;
+      let busy = false;
+
+      const j = (r) => r.json();
+
+      function renderFooter() {
+        const pct = state.total ? Math.round((state.done / state.total) * 100) : 0;
+        $progressCount.textContent = state.done + "/" + state.total;
+        $progressFill.style.width = pct + "%";
+        $streakLabel.textContent = state.streak + "-day streak";
+      }
+
+      function renderHeader() {
+        $deckName.textContent = state.deck;
+        $dueMeta.textContent = state.due + " of " + state.total + " due today";
+      }
+
+      // The card: a scaleX turn (1 -> 0 -> swap -> 1), NOT a 3D rotateY flip
+      // (3D mirrors text under transformed ancestors — see the design spec).
+      function renderStage() {
+        if (!state.card) {
+          $stage.innerHTML =
+            '<div class="empty"><span class="big">All caught up</span>' +
+            '<span>No cards due today — your deck is scheduled ahead.</span>' +
+            '<button class="vessel-primary" id="reset">Study deck again</button></div>';
+          document.getElementById("reset").onclick = resetDeck;
+          return;
+        }
+        const card = state.card;
+        $stage.innerHTML =
+          '<div class="card-wrap" id="card-wrap">' +
+          '<div class="card" id="card"></div></div>' +
+          '<div class="ratings" id="ratings"></div>';
+        document.getElementById("card-wrap").onclick = onFlip;
+        paintCard(card);
+        paintRatings(card);
+      }
+
+      function paintCard(card) {
+        const $card = document.getElementById("card");
+        if (!$card) return;
+        $card.classList.toggle("flipped", flipped);
+        if (flipped) {
+          $card.innerHTML =
+            '<span class="card-kicker">English</span>' +
+            '<span class="card-back-word"></span>' +
+            '<span class="card-note"></span>';
+          $card.querySelector(".card-back-word").textContent = card.back;
+          $card.querySelector(".card-note").textContent = card.note;
+        } else {
+          $card.innerHTML =
+            '<span class="card-kicker">Icelandic</span>' +
+            '<span class="card-front-word"></span>' +
+            '<span class="flip-hint">click to flip</span>';
+          $card.querySelector(".card-front-word").textContent = card.front;
+        }
+      }
+
+      function paintRatings(card) {
+        const $ratings = document.getElementById("ratings");
+        if (!$ratings) return;
+        if (!flipped) {
+          $ratings.innerHTML =
+            '<span class="hint">Flip the card, then rate how well you knew it</span>';
+          return;
+        }
+        $ratings.innerHTML = "";
+        for (const r of RATINGS) {
+          const btn = document.createElement("button");
+          btn.className = "rating-btn " + r.id;
+          const label = document.createElement("span");
+          label.className = "rating-label";
+          label.textContent = r.label;
+          const interval = document.createElement("span");
+          interval.className = "rating-interval";
+          interval.textContent = card.intervals[r.id];
+          btn.append(label, interval);
+          btn.onclick = (e) => { e.stopPropagation(); onRate(r.id); };
+          $ratings.append(btn);
+        }
+      }
+
+      function onFlip() {
+        if (busy || !state.card) return;
+        const $card = document.getElementById("card");
+        $card.style.transform = "scaleX(0)";
+        setTimeout(() => {
+          flipped = !flipped;
+          paintCard(state.card);
+          paintRatings(state.card);
+          $card.style.transform = "scaleX(1)";
+        }, 150);
+      }
+
+      async function onRate(rating) {
+        if (busy || !state.card) return;
+        busy = true;
+        const cardId = state.card.id;
+        const $card = document.getElementById("card");
+        $card.style.transform = "scaleX(0)";
+        const next = await fetch("/api/rate", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ card_id: cardId, rating }),
+        }).then(j);
+        state = next;
+        flipped = false;
+        // Brief pause so the turn reads as advancing to the next card.
+        setTimeout(() => {
+          renderHeader();
+          renderFooter();
+          renderStage();
+          busy = false;
+        }, 170);
+      }
+
+      async function resetDeck() {
+        state = await fetch("/api/reset", { method: "POST" }).then(j);
+        flipped = false;
+        renderHeader();
+        renderFooter();
+        renderStage();
+      }
+
+      // --- View switching: Study <-> Cards ---------------------------------
+      function setView(next) {
+        if (busy) return;
+        view = next;
+        $tabStudy.classList.toggle("active", view === "study");
+        $tabCards.classList.toggle("active", view === "cards");
+        const study = view === "study";
+        $stage.style.display = study ? "" : "none";
+        $manage.style.display = study ? "none" : "";
+        if (study) {
+          // Coming back from edits: re-sync the study session with the schedule.
+          refreshState();
+        } else {
+          editingId = null;
+          loadCards();
+        }
+      }
+      $tabStudy.onclick = () => setView("study");
+      $tabCards.onclick = () => setView("cards");
+
+      async function refreshState() {
+        state = await fetch("/api/state").then(j);
+        flipped = false;
+        renderHeader();
+        renderFooter();
+        renderStage();
+      }
+
+      // --- Deck rename -----------------------------------------------------
+      $deckName.onclick = async () => {
+        const current = state ? state.deck : "";
+        const name = window.prompt("Rename deck", current);
+        if (name === null) return;
+        const trimmed = name.trim();
+        if (!trimmed) return;
+        state = await fetch("/api/deck/rename", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ name: trimmed.slice(0, 200) }),
+        }).then(j);
+        renderHeader();
+        renderFooter();
+      };
+
+      // --- Cards (manage) view --------------------------------------------
+      async function loadCards() {
+        const data = await fetch("/api/cards").then(j);
+        cards = data.cards;
+        renderManage();
+      }
+
+      function renderManage() {
+        $manage.innerHTML = "";
+
+        const head = document.createElement("div");
+        head.className = "manage-head";
+        const title = document.createElement("span");
+        title.className = "manage-title";
+        title.textContent = editingId === null ? "Add a card" : "Edit card";
+        const count = document.createElement("span");
+        count.className = "meta";
+        count.textContent = (cards ? cards.length : 0) + " cards";
+        head.append(title, count);
+        $manage.append(head);
+
+        $manage.append(buildForm());
+
+        if (!cards || cards.length === 0) {
+          const e = document.createElement("div");
+          e.className = "card-list";
+          const inner = document.createElement("div");
+          inner.className = "manage-empty";
+          inner.textContent = "No cards yet — add one above.";
+          e.append(inner);
+          $manage.append(e);
+          return;
+        }
+
+        const list = document.createElement("div");
+        list.className = "card-list";
+        for (const c of cards) list.append(buildRow(c));
+        $manage.append(list);
+      }
+
+      // The add/edit form. When editingId is set, fields are prefilled and the
+      // primary button saves the edit; otherwise it adds a new card.
+      function buildForm() {
+        const editing = editingId !== null;
+        const card = editing ? cards.find((c) => c.id === editingId) : null;
+
+        const form = document.createElement("form");
+        form.className = "card-form";
+
+        const frontWrap = document.createElement("div");
+        const frontLabel = document.createElement("label");
+        frontLabel.className = "field-label";
+        frontLabel.textContent = "Front";
+        const front = document.createElement("input");
+        front.type = "text";
+        front.maxLength = 200;
+        front.required = true;
+        front.placeholder = "Icelandic word";
+        if (card) front.value = card.front;
+        frontWrap.append(frontLabel, front);
+
+        const backWrap = document.createElement("div");
+        const backLabel = document.createElement("label");
+        backLabel.className = "field-label";
+        backLabel.textContent = "Back";
+        const back = document.createElement("input");
+        back.type = "text";
+        back.maxLength = 200;
+        back.required = true;
+        back.placeholder = "English meaning";
+        if (card) back.value = card.back;
+        backWrap.append(backLabel, back);
+
+        const noteWrap = document.createElement("div");
+        noteWrap.className = "note-field";
+        const noteLabel = document.createElement("label");
+        noteLabel.className = "field-label";
+        noteLabel.textContent = "Pronunciation note (optional)";
+        const note = document.createElement("input");
+        note.type = "text";
+        note.maxLength = 500;
+        note.placeholder = "e.g. “tahk FIH-rir”";
+        if (card) note.value = card.note;
+        noteWrap.append(noteLabel, note);
+
+        const actions = document.createElement("div");
+        actions.className = "form-actions";
+        const submit = document.createElement("button");
+        submit.type = "submit";
+        submit.className = "vessel-primary";
+        submit.textContent = editing ? "Save card" : "Add card";
+        actions.append(submit);
+        if (editing) {
+          const cancel = document.createElement("button");
+          cancel.type = "button";
+          cancel.textContent = "Cancel";
+          cancel.onclick = () => { editingId = null; renderManage(); };
+          actions.append(cancel);
+        }
+
+        const err = document.createElement("div");
+        err.className = "form-err";
+
+        form.append(frontWrap, backWrap, noteWrap, actions, err);
+        form.onsubmit = async (e) => {
+          e.preventDefault();
+          if (busy) return;
+          const f = front.value.trim();
+          const b = back.value.trim();
+          if (!f || !b) {
+            err.textContent = "Front and back are both required.";
+            return;
+          }
+          busy = true;
+          submit.disabled = true;
+          const body = { front: f, back: b, note: note.value.trim() };
+          try {
+            let resp;
+            if (editing) {
+              body.card_id = editingId;
+              resp = await fetch("/api/cards/edit", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify(body),
+              });
+            } else {
+              resp = await fetch("/api/cards", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify(body),
+              });
+            }
+            if (!resp.ok) {
+              err.textContent = "Could not save — check the front and back.";
+              return;
+            }
+            const data = await resp.json();
+            cards = data.cards;
+            editingId = null;
+            renderManage();
+          } finally {
+            busy = false;
+          }
+        };
+        return form;
+      }
+
+      function buildRow(c) {
+        const row = document.createElement("div");
+        row.className = "card-row";
+
+        const front = document.createElement("div");
+        front.className = "cr-front";
+        front.textContent = c.front;
+
+        const back = document.createElement("div");
+        back.className = "cr-back";
+        back.textContent = c.back;
+
+        const actions = document.createElement("div");
+        actions.className = "cr-actions";
+        if (c.due_today) {
+          const pill = document.createElement("span");
+          pill.className = "due-pill";
+          pill.textContent = "due";
+          actions.append(pill);
+        }
+        const edit = document.createElement("button");
+        edit.type = "button";
+        edit.textContent = "Edit";
+        edit.onclick = () => { editingId = c.id; renderManage(); };
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "vessel-danger";
+        del.textContent = "Delete";
+        del.onclick = () => deleteCard(c);
+        actions.append(edit, del);
+
+        row.append(front, back, actions);
+
+        if (c.note) {
+          const note = document.createElement("div");
+          note.className = "cr-note";
+          note.textContent = c.note;
+          row.append(note);
+        }
+        return row;
+      }
+
+      async function deleteCard(c) {
+        if (busy) return;
+        if (!window.confirm('Delete this card?\n\n' + c.front + ' → ' + c.back)) return;
+        busy = true;
+        try {
+          const data = await fetch("/api/cards/delete", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ card_id: c.id }),
+          }).then(j);
+          cards = data.cards;
+          if (editingId === c.id) editingId = null;
+          renderManage();
+        } finally {
+          busy = false;
+        }
+      }
+
+      (async () => {
+        state = await fetch("/api/state").then(j);
+        renderHeader();
+        renderFooter();
+        renderStage();
+      })();
+    </script>
+  </body>
+</html>
