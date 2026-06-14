@@ -9,7 +9,10 @@ export function collectDir(dir: string): Record<string, Uint8Array> {
   const acc: Record<string, Uint8Array> = {};
   const walk = (cur: string) => {
     for (const name of readdirSync(cur)) {
-      if (name.startsWith(".") || SKIP_DIRS.has(name)) continue;
+      // Skip dotfiles, cruft dirs, and built .vessel artifacts — a bundle's own
+      // output often lives in its source dir (examples commit it there), and a
+      // bundle must never contain a nested .vessel.
+      if (name.startsWith(".") || SKIP_DIRS.has(name) || name.endsWith(".vessel")) continue;
       const full = join(cur, name);
       if (statSync(full).isDirectory()) walk(full);
       else acc[relative(dir, full).split(sep).join("/")] = new Uint8Array(readFileSync(full));

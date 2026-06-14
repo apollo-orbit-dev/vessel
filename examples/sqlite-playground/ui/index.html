@@ -1,0 +1,621 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SQLite Playground</title>
+    <!-- Layout only. All colors come from the Vessel theme (--vessel-* tokens +
+         the host's classless base styles). Toggle light/dark or the theme in the
+         host and this UI follows. No hardcoded colors. -->
+    <style>
+      html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; }
+      .app {
+        display: flex; flex-direction: column; height: 100vh; overflow: hidden;
+        font: 14px var(--vessel-font); color: var(--vessel-text);
+        background: var(--vessel-bg);
+      }
+
+      /* header */
+      .head {
+        display: flex; align-items: center; gap: 12px;
+        padding: 13px 22px; background: var(--vessel-surface);
+        border-bottom: 1px solid var(--vessel-border); flex: 0 0 auto;
+      }
+      .head .ico { color: var(--vessel-text-muted); display: flex; }
+      .head .name { font: 600 16px var(--vessel-font); letter-spacing: -0.01em; }
+      .head .meta {
+        font: 11.5px var(--vessel-font-mono); color: var(--vessel-text-muted);
+      }
+      .head .spacer { flex: 1; }
+
+      /* tabs */
+      .tabs {
+        display: flex; gap: 4px; padding: 0 18px; flex: 0 0 auto;
+        background: var(--vessel-surface);
+        border-bottom: 1px solid var(--vessel-border);
+      }
+      .tab {
+        border: none; background: transparent; cursor: pointer;
+        padding: 9px 14px; font: 500 13px var(--vessel-font);
+        color: var(--vessel-text-muted); border-bottom: 2px solid transparent;
+        margin-bottom: -1px;
+      }
+      .tab:hover { color: var(--vessel-text); }
+      .tab.on {
+        color: var(--vessel-text); border-bottom-color: var(--vessel-accent);
+      }
+
+      /* main scroll region */
+      .main { flex: 1; min-height: 0; overflow: auto; }
+      .panel { display: none; height: 100%; }
+      .panel.on { display: block; }
+
+      /* generic empty / hint */
+      .empty {
+        display: flex; flex-direction: column; align-items: center;
+        justify-content: center; gap: 12px; height: 100%;
+        color: var(--vessel-text-muted); text-align: center; padding: 24px;
+      }
+      .empty p { margin: 0; max-width: 40ch; line-height: 1.5; }
+      .err {
+        color: var(--vessel-danger); font: 12.5px var(--vessel-font);
+        margin: 0; min-height: 1em;
+      }
+      .ok-msg { color: var(--vessel-ok); }
+
+      /* browse layout: table list + detail */
+      .browse { display: grid; grid-template-columns: 230px 1fr; height: 100%; }
+      .tlist {
+        border-right: 1px solid var(--vessel-border); overflow: auto;
+        background: var(--vessel-surface);
+      }
+      .tlist .tl-head {
+        font: 600 10.5px var(--vessel-font); letter-spacing: 0.07em;
+        text-transform: uppercase; color: var(--vessel-text-muted);
+        padding: 12px 16px 6px;
+      }
+      .tlist button {
+        display: flex; align-items: baseline; gap: 8px; width: 100%;
+        border: none; background: transparent; cursor: pointer; text-align: left;
+        padding: 7px 16px; color: var(--vessel-text); font: 13px var(--vessel-font);
+      }
+      .tlist button:hover { background: var(--vessel-field); }
+      .tlist button.on { background: var(--vessel-field); color: var(--vessel-accent); }
+      .tlist button .ct {
+        margin-left: auto; font: 11px var(--vessel-font-mono);
+        color: var(--vessel-text-muted);
+      }
+      .tlist button .ty {
+        font: 10px var(--vessel-font-mono); color: var(--vessel-text-muted);
+        text-transform: uppercase;
+      }
+      .detail { overflow: auto; padding: 18px 22px; }
+      .detail h2 {
+        font: 600 15px var(--vessel-font); margin: 0 0 4px;
+      }
+      .detail .sub {
+        font: 11.5px var(--vessel-font-mono); color: var(--vessel-text-muted);
+        margin: 0 0 16px;
+      }
+      .sectlbl {
+        font: 600 10.5px var(--vessel-font); letter-spacing: 0.07em;
+        text-transform: uppercase; color: var(--vessel-text-muted);
+        margin: 18px 0 8px;
+      }
+
+      /* data table */
+      .dwrap { overflow: auto; border: 1px solid var(--vessel-border);
+        border-radius: var(--vessel-radius); }
+      table.data { border-collapse: collapse; width: 100%; font: 12.5px var(--vessel-font); }
+      table.data th, table.data td {
+        text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--vessel-border);
+        white-space: nowrap; max-width: 360px; overflow: hidden; text-overflow: ellipsis;
+      }
+      table.data th {
+        font: 600 11px var(--vessel-font); color: var(--vessel-text-muted);
+        position: sticky; top: 0; background: var(--vessel-surface);
+        border-bottom: 1px solid var(--vessel-border);
+      }
+      table.data td { font-family: var(--vessel-font-mono); color: var(--vessel-text); }
+      table.data td.nul { color: var(--vessel-text-muted); font-style: italic; }
+      table.data .pk-badge {
+        font: 9px var(--vessel-font-mono); color: var(--vessel-accent);
+        border: 1px solid var(--vessel-accent); border-radius: 4px; padding: 0 4px;
+        margin-left: 6px; text-transform: uppercase; vertical-align: middle;
+      }
+
+      .pager {
+        display: flex; align-items: center; gap: 10px; margin-top: 10px;
+        font: 11.5px var(--vessel-font-mono); color: var(--vessel-text-muted);
+      }
+      .pager button { padding: 4px 10px; font: 12px var(--vessel-font); }
+
+      /* SQL editor panel */
+      .sqlpanel { display: flex; flex-direction: column; height: 100%; }
+      .sqlbar {
+        display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+        padding: 12px 22px; border-bottom: 1px solid var(--vessel-border);
+      }
+      .sqlbar .spacer { flex: 1; }
+      .toggle { display: inline-flex; align-items: center; gap: 7px;
+        font: 12.5px var(--vessel-font); color: var(--vessel-text); cursor: pointer; }
+      .toggle input { width: auto; height: auto; margin: 0; }
+      .warn {
+        font: 11.5px var(--vessel-font); color: var(--vessel-danger);
+      }
+      .edarea { padding: 14px 22px 0; }
+      textarea#sql {
+        width: 100%; min-height: 120px; box-sizing: border-box; resize: vertical;
+        font: 13px var(--vessel-font-mono); line-height: 1.5;
+      }
+      .results { flex: 1; min-height: 0; overflow: auto; padding: 4px 22px 22px; }
+      .resmeta {
+        font: 11.5px var(--vessel-font-mono); color: var(--vessel-text-muted);
+        margin: 12px 0 8px;
+      }
+
+      /* diagram */
+      .diagram { padding: 20px 22px; }
+      .er-grid {
+        display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-start;
+      }
+      .er-table {
+        border: 1px solid var(--vessel-border); border-radius: var(--vessel-radius);
+        background: var(--vessel-surface); min-width: 180px; overflow: hidden;
+      }
+      .er-table > h3 {
+        margin: 0; padding: 8px 12px; font: 600 12.5px var(--vessel-font);
+        background: var(--vessel-field); border-bottom: 1px solid var(--vessel-border);
+      }
+      .er-table ul { list-style: none; margin: 0; padding: 4px 0; }
+      .er-table li {
+        padding: 3px 12px; font: 11.5px var(--vessel-font-mono);
+        display: flex; gap: 8px; align-items: baseline;
+      }
+      .er-table li .cn { color: var(--vessel-text); }
+      .er-table li .ct { color: var(--vessel-text-muted); margin-left: auto; }
+      .er-table li.pk .cn { color: var(--vessel-accent); font-weight: 600; }
+      .er-edges {
+        margin-top: 22px; border-top: 1px solid var(--vessel-border); padding-top: 14px;
+      }
+      .er-edges .sectlbl { margin-top: 0; }
+      .er-edge {
+        font: 12px var(--vessel-font-mono); color: var(--vessel-text);
+        padding: 4px 0; display: flex; align-items: center; gap: 8px;
+      }
+      .er-edge .arrow { color: var(--vessel-accent); }
+      .er-edge .ref { color: var(--vessel-text-muted); }
+
+      /* library panel (saved + history) */
+      .library { padding: 18px 22px; display: grid; gap: 24px; }
+      .lib-list { display: flex; flex-direction: column; gap: 8px; }
+      .lib-item {
+        border: 1px solid var(--vessel-border); border-radius: var(--vessel-radius);
+        padding: 10px 12px; background: var(--vessel-surface);
+      }
+      .lib-item .li-top {
+        display: flex; align-items: baseline; gap: 10px; margin-bottom: 4px;
+      }
+      .lib-item .li-name { font: 600 13px var(--vessel-font); }
+      .lib-item .li-when {
+        font: 11px var(--vessel-font-mono); color: var(--vessel-text-muted);
+        margin-left: auto;
+      }
+      .lib-item code {
+        display: block; white-space: pre-wrap; word-break: break-word;
+        font: 11.5px var(--vessel-font-mono); color: var(--vessel-text-muted);
+        margin: 0;
+      }
+      .lib-item .li-acts { display: flex; gap: 8px; margin-top: 8px; }
+      .lib-item .li-acts button { padding: 4px 10px; font: 12px var(--vessel-font); }
+      .li-fail .li-name { color: var(--vessel-danger); }
+
+      .row-flex { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+      /* file input */
+      input[type="file"] { font: 12px var(--vessel-font); color: var(--vessel-text-muted); }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <div class="head">
+        <span class="ico" id="ico-db"></span>
+        <span class="name">SQLite Playground</span>
+        <span class="meta" id="dbmeta">no database</span>
+        <span class="spacer"></span>
+        <input type="file" id="file" accept=".sqlite,.db,.sqlite3,application/x-sqlite3,application/vnd.sqlite3" style="display:none" />
+        <button id="open-btn" class="vessel-primary">Open .sqlite</button>
+        <button id="close-btn" style="display:none">Close DB</button>
+      </div>
+
+      <div class="tabs">
+        <button class="tab on" data-tab="browse">Browse</button>
+        <button class="tab" data-tab="sql">SQL</button>
+        <button class="tab" data-tab="diagram">ER Diagram</button>
+        <button class="tab" data-tab="library">Saved &amp; History</button>
+      </div>
+
+      <p class="err" id="toperr" style="padding:0 22px;"></p>
+
+      <div class="main">
+        <!-- BROWSE -->
+        <div class="panel on" data-panel="browse">
+          <div class="empty" id="browse-empty">
+            <p>Open a SQLite database file to browse its tables, columns and rows. The file you open is opened on an isolated, read-only connection &mdash; it never touches this tool's own saved data.</p>
+            <button class="vessel-primary" id="browse-open">Open .sqlite</button>
+          </div>
+          <div class="browse" id="browse-live" style="display:none;">
+            <div class="tlist" id="tlist"></div>
+            <div class="detail" id="detail">
+              <div class="empty"><p>Select a table on the left.</p></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SQL -->
+        <div class="panel" data-panel="sql">
+          <div class="sqlpanel">
+            <div class="sqlbar">
+              <button class="vessel-primary" id="run-btn">Run</button>
+              <button id="save-btn">Save query</button>
+              <label class="toggle">
+                <input type="checkbox" id="allow-writes" />
+                <span>Allow writes</span>
+              </label>
+              <span class="warn" id="write-warn" style="display:none;">Writes enabled &mdash; statements modify the imported copy.</span>
+              <span class="spacer"></span>
+            </div>
+            <div class="edarea">
+              <textarea id="sql" spellcheck="false" placeholder="SELECT * FROM ..."></textarea>
+              <p class="err" id="sqlerr"></p>
+            </div>
+            <div class="results" id="results">
+              <div class="empty"><p>Read-only by default. Only SELECT / PRAGMA / EXPLAIN / WITH&hellip;SELECT run unless you enable writes.</p></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- DIAGRAM -->
+        <div class="panel" data-panel="diagram">
+          <div class="diagram" id="diagram">
+            <div class="empty"><p>Open a database to see its tables and foreign-key relationships.</p></div>
+          </div>
+        </div>
+
+        <!-- LIBRARY -->
+        <div class="panel" data-panel="library">
+          <div class="library">
+            <div>
+              <div class="row-flex">
+                <div class="sectlbl" style="margin:0;">Saved queries</div>
+              </div>
+              <div class="lib-list" id="saved-list"></div>
+            </div>
+            <div>
+              <div class="row-flex">
+                <div class="sectlbl" style="margin:0;">Query history</div>
+                <button id="clear-hist" style="margin-left:auto;padding:4px 10px;font:12px var(--vessel-font);">Clear</button>
+              </div>
+              <div class="lib-list" id="hist-list"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const ICONS = {
+        db: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M4 12c0 1.66 3.58 3 8 3s8-1.34 8-3"/></svg>',
+      };
+      document.getElementById("ico-db").innerHTML = ICONS.db;
+
+      const $ = (id) => document.getElementById(id);
+      const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+      let state = { imported: false, table: null, offset: 0, limit: 50, total: 0 };
+
+      // ---- API helpers ----
+      async function api(path, body) {
+        const opts = body === undefined ? {} : {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        };
+        const r = await fetch(path, opts);
+        return r.json();
+      }
+      async function apiGet(path) {
+        const r = await fetch(path);
+        return r.json();
+      }
+
+      function topErr(msg) { $("toperr").textContent = msg || ""; }
+
+      // ---- tabs ----
+      document.querySelectorAll(".tab").forEach((t) => {
+        t.onclick = () => {
+          document.querySelectorAll(".tab").forEach((x) => x.classList.remove("on"));
+          document.querySelectorAll(".panel").forEach((x) => x.classList.remove("on"));
+          t.classList.add("on");
+          document.querySelector(`.panel[data-panel="${t.dataset.tab}"]`).classList.add("on");
+          if (t.dataset.tab === "diagram") loadDiagram();
+          if (t.dataset.tab === "library") { loadSaved(); loadHistory(); }
+        };
+      });
+
+      // ---- file open ----
+      function pickFile() { $("file").click(); }
+      $("open-btn").onclick = pickFile;
+      $("browse-open").onclick = pickFile;
+
+      $("file").onchange = async () => {
+        const f = $("file").files[0];
+        $("file").value = "";
+        if (!f) return;
+        topErr("");
+        const MAX = 25 * 1024 * 1024;
+        if (f.size > MAX) { topErr("File is too large (max 25 MB)."); return; }
+        const buf = await f.arrayBuffer();
+        // base64-encode in chunks to avoid call-stack limits on large files.
+        const bytes = new Uint8Array(buf);
+        let bin = "";
+        const CH = 0x8000;
+        for (let i = 0; i < bytes.length; i += CH) {
+          bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CH));
+        }
+        const b64 = btoa(bin);
+        $("dbmeta").textContent = "importing…";
+        const res = await api("/api/import", { data: b64, filename: f.name });
+        if (!res.ok) { topErr(res.error || "Import failed."); $("dbmeta").textContent = "no database"; return; }
+        state.imported = true;
+        state.table = null; state.offset = 0;
+        $("dbmeta").textContent = `${esc(res.filename)} · ${res.tables} table${res.tables === 1 ? "" : "s"} · ${fmtBytes(res.bytes)}`;
+        $("close-btn").style.display = "";
+        await refreshBrowse();
+      };
+
+      $("close-btn").onclick = async () => {
+        await api("/api/close", {});
+        state.imported = false; state.table = null;
+        $("dbmeta").textContent = "no database";
+        $("close-btn").style.display = "none";
+        $("browse-empty").style.display = "";
+        $("browse-live").style.display = "none";
+        $("diagram").innerHTML = '<div class="empty"><p>Open a database to see its tables and foreign-key relationships.</p></div>';
+        $("results").innerHTML = '<div class="empty"><p>Read-only by default.</p></div>';
+      };
+
+      function fmtBytes(n) {
+        if (n < 1024) return n + " B";
+        if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+        return (n / 1024 / 1024).toFixed(1) + " MB";
+      }
+      function fmtTime(t) {
+        if (!t) return "";
+        const d = new Date(t * 1000);
+        return d.toLocaleString();
+      }
+
+      // ---- browse ----
+      async function refreshBrowse() {
+        $("browse-empty").style.display = "none";
+        $("browse-live").style.display = "grid";
+        const res = await api("/api/tables", undefined);
+        const list = $("tlist");
+        if (!res.ok) { list.innerHTML = `<div class="tl-head">${esc(res.error)}</div>`; return; }
+        if (!res.tables.length) {
+          list.innerHTML = '<div class="tl-head">No tables</div>';
+          $("detail").innerHTML = '<div class="empty"><p>This database has no tables or views.</p></div>';
+          return;
+        }
+        let html = '<div class="tl-head">Tables &amp; views</div>';
+        res.tables.forEach((t) => {
+          const on = t.name === state.table ? "on" : "";
+          const cnt = t.rows === null ? "" : `<span class="ct">${t.rows}</span>`;
+          html += `<button class="${on}" data-t="${esc(t.name)}"><span class="ty">${t.type === "view" ? "V" : "T"}</span><span>${esc(t.name)}</span>${cnt}</button>`;
+        });
+        list.innerHTML = html;
+        list.querySelectorAll("button").forEach((b) => {
+          b.onclick = () => { state.table = b.dataset.t; state.offset = 0; loadTable(); };
+        });
+        if (!state.table) {
+          state.table = res.tables[0].name;
+        }
+        loadTable();
+      }
+
+      async function loadTable() {
+        document.querySelectorAll("#tlist button").forEach((b) =>
+          b.classList.toggle("on", b.dataset.t === state.table));
+        const res = await api("/api/schema", { table: state.table, offset: state.offset, limit: state.limit });
+        const d = $("detail");
+        if (!res.ok) { d.innerHTML = `<div class="empty"><p>${esc(res.error)}</p></div>`; return; }
+        state.total = res.total;
+
+        let html = `<h2>${esc(res.table)}</h2><p class="sub">${res.total} row${res.total === 1 ? "" : "s"} · ${res.columns.length} column${res.columns.length === 1 ? "" : "s"}</p>`;
+
+        html += '<div class="sectlbl">Columns</div><div class="dwrap"><table class="data"><thead><tr><th>name</th><th>type</th><th>pk</th><th>not null</th></tr></thead><tbody>';
+        res.columns.forEach((c) => {
+          html += `<tr><td>${esc(c.name)}</td><td>${esc(c.type)}</td><td>${c.pk ? "yes" : ""}</td><td>${c.notnull ? "yes" : ""}</td></tr>`;
+        });
+        html += "</tbody></table></div>";
+
+        html += '<div class="sectlbl">Rows</div><div class="dwrap"><table class="data"><thead><tr>';
+        res.col_names.forEach((c) => { html += `<th>${esc(c)}</th>`; });
+        html += "</tr></thead><tbody>";
+        if (!res.rows.length) {
+          html += `<tr><td colspan="${res.col_names.length || 1}" class="nul">no rows</td></tr>`;
+        }
+        res.rows.forEach((r) => {
+          html += "<tr>";
+          r.forEach((v) => {
+            if (v === null) html += '<td class="nul">NULL</td>';
+            else html += `<td>${esc(v)}</td>`;
+          });
+          html += "</tr>";
+        });
+        html += "</tbody></table></div>";
+
+        // pager
+        const from = res.total === 0 ? 0 : state.offset + 1;
+        const to = Math.min(state.offset + state.limit, res.total);
+        html += `<div class="pager"><button id="prev" ${state.offset <= 0 ? "disabled" : ""}>Prev</button><button id="next" ${to >= res.total ? "disabled" : ""}>Next</button><span>${from}–${to} of ${res.total}</span></div>`;
+
+        d.innerHTML = html;
+        const prev = $("prev"), next = $("next");
+        if (prev) prev.onclick = () => { state.offset = Math.max(0, state.offset - state.limit); loadTable(); };
+        if (next) next.onclick = () => { state.offset += state.limit; loadTable(); };
+      }
+
+      // ---- SQL ----
+      $("allow-writes").onchange = () => {
+        $("write-warn").style.display = $("allow-writes").checked ? "" : "none";
+      };
+
+      $("run-btn").onclick = runQuery;
+      $("sql").addEventListener("keydown", (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); runQuery(); }
+      });
+
+      async function runQuery() {
+        $("sqlerr").textContent = "";
+        const sql = $("sql").value;
+        if (!sql.trim()) { $("sqlerr").textContent = "Query is empty."; return; }
+        if (!state.imported) { $("sqlerr").textContent = "Open a database first."; return; }
+        const res = await api("/api/run", {
+          sql, allow_writes: $("allow-writes").checked, limit: 500,
+        });
+        renderResults(res);
+      }
+
+      function renderResults(res) {
+        const box = $("results");
+        if (!res.ok) {
+          $("sqlerr").textContent = res.error || "Query failed.";
+          box.innerHTML = `<div class="empty"><p>${esc(res.error || "Query failed.")}</p></div>`;
+          return;
+        }
+        if (res.kind === "exec") {
+          box.innerHTML = `<p class="resmeta ok-msg">Statement executed. ${res.rowcount >= 0 ? res.rowcount + " row(s) affected." : ""} (${res.elapsed_ms} ms)</p>`;
+          return;
+        }
+        let html = `<p class="resmeta">${res.row_count} row${res.row_count === 1 ? "" : "s"}${res.truncated ? " (truncated)" : ""} · ${res.elapsed_ms} ms</p>`;
+        html += '<div class="dwrap"><table class="data"><thead><tr>';
+        res.col_names.forEach((c) => { html += `<th>${esc(c)}</th>`; });
+        html += "</tr></thead><tbody>";
+        if (!res.rows.length) html += `<tr><td colspan="${res.col_names.length || 1}" class="nul">no rows</td></tr>`;
+        res.rows.forEach((r) => {
+          html += "<tr>";
+          r.forEach((v) => {
+            if (v === null) html += '<td class="nul">NULL</td>';
+            else html += `<td>${esc(v)}</td>`;
+          });
+          html += "</tr>";
+        });
+        html += "</tbody></table></div>";
+        box.innerHTML = html;
+      }
+
+      $("save-btn").onclick = async () => {
+        const sql = $("sql").value.trim();
+        if (!sql) { $("sqlerr").textContent = "Nothing to save."; return; }
+        const name = prompt("Name this query:");
+        if (!name) return;
+        const res = await api("/api/saved", { name, sql });
+        if (!res.ok) { $("sqlerr").textContent = res.error || "Save failed."; return; }
+        $("sqlerr").textContent = "";
+      };
+
+      // ---- diagram ----
+      async function loadDiagram() {
+        const box = $("diagram");
+        if (!state.imported) {
+          box.innerHTML = '<div class="empty"><p>Open a database to see its tables and foreign-key relationships.</p></div>';
+          return;
+        }
+        const res = await api("/api/diagram", undefined);
+        if (!res.ok) { box.innerHTML = `<div class="empty"><p>${esc(res.error)}</p></div>`; return; }
+        if (!res.nodes.length) { box.innerHTML = '<div class="empty"><p>No tables to diagram.</p></div>'; return; }
+        let html = '<div class="er-grid">';
+        res.nodes.forEach((n) => {
+          html += `<div class="er-table"><h3>${esc(n.name)}</h3><ul>`;
+          n.columns.forEach((c) => {
+            html += `<li class="${c.pk ? "pk" : ""}"><span class="cn">${esc(c.name)}${c.pk ? " ⚿" : ""}</span><span class="ct">${esc(c.type)}</span></li>`;
+          });
+          html += "</ul></div>";
+        });
+        html += "</div>";
+        if (res.edges.length) {
+          html += '<div class="er-edges"><div class="sectlbl">Foreign keys</div>';
+          res.edges.forEach((e) => {
+            html += `<div class="er-edge"><span class="cn">${esc(e.from_table)}.${esc(e.from_col)}</span><span class="arrow">→</span><span class="ref">${esc(e.to_table)}.${esc(e.to_col)}</span></div>`;
+          });
+          html += "</div>";
+        } else {
+          html += '<div class="er-edges"><p class="sub" style="margin:0;">No foreign-key relationships defined.</p></div>';
+        }
+        box.innerHTML = html;
+      }
+
+      // ---- library ----
+      async function loadSaved() {
+        const res = await apiGet("/api/saved");
+        const box = $("saved-list");
+        if (!res.saved.length) { box.innerHTML = '<p class="sub" style="margin:0;">No saved queries yet.</p>'; return; }
+        box.innerHTML = "";
+        res.saved.forEach((q) => {
+          const el = document.createElement("div");
+          el.className = "lib-item";
+          el.innerHTML =
+            `<div class="li-top"><span class="li-name">${esc(q.name)}</span><span class="li-when">${esc(fmtTime(q.created))}</span></div>` +
+            `<code>${esc(q.sql)}</code>` +
+            `<div class="li-acts"><button data-act="load">Load into editor</button><button class="vessel-danger" data-act="del">Delete</button></div>`;
+          el.querySelector('[data-act="load"]').onclick = () => loadIntoEditor(q.sql);
+          el.querySelector('[data-act="del"]').onclick = async () => {
+            await api("/api/saved/delete", { id: q.id }); loadSaved();
+          };
+          box.appendChild(el);
+        });
+      }
+
+      async function loadHistory() {
+        const res = await apiGet("/api/history");
+        const box = $("hist-list");
+        if (!res.history.length) { box.innerHTML = '<p class="sub" style="margin:0;">No history yet.</p>'; return; }
+        box.innerHTML = "";
+        res.history.forEach((h) => {
+          const el = document.createElement("div");
+          el.className = "lib-item" + (h.ok ? "" : " li-fail");
+          el.innerHTML =
+            `<div class="li-top"><span class="li-name">${h.ok ? esc(h.rows + " row(s)") : "failed"}</span><span class="li-when">${esc(fmtTime(h.ran))}</span></div>` +
+            `<code>${esc(h.sql)}</code>` +
+            `<div class="li-acts"><button data-act="load">Load into editor</button></div>`;
+          el.querySelector('[data-act="load"]').onclick = () => loadIntoEditor(h.sql);
+          box.appendChild(el);
+        });
+      }
+
+      function loadIntoEditor(sql) {
+        $("sql").value = sql;
+        document.querySelector('.tab[data-tab="sql"]').click();
+      }
+
+      $("clear-hist").onclick = async () => {
+        await api("/api/history/clear", {});
+        loadHistory();
+      };
+
+      // ---- boot ----
+      (async function init() {
+        const s = await apiGet("/api/status");
+        if (s.imported) {
+          state.imported = true;
+          $("close-btn").style.display = "";
+          $("dbmeta").textContent = "database loaded";
+          await refreshBrowse();
+        }
+      })();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Data Converter</title>
+    <!-- Layout only. All colors come from the Vessel theme (--vessel-* tokens
+         + base component styles injected by the host). Toggle light/dark or the
+         theme in the host and this UI follows. No hardcoded colors. -->
+    <style>
+      html, body { height: 100%; margin: 0; padding: 0; }
+      body {
+        font: 14px var(--vessel-font);
+        color: var(--vessel-text);
+        background: var(--vessel-bg);
+      }
+      .app { max-width: 1100px; margin: 0 auto; padding: 20px 24px 40px; }
+      header h1 { font-size: 20px; letter-spacing: -0.01em; margin: 0 0 2px; }
+      header p { margin: 0 0 18px; color: var(--vessel-text-muted); max-width: 70ch; }
+      .privacy {
+        display: inline-block; margin-bottom: 18px; padding: 8px 12px;
+        border: 1px solid var(--vessel-border); border-radius: var(--vessel-radius);
+        background: var(--vessel-surface); color: var(--vessel-text-muted);
+        font-size: 12.5px;
+      }
+      .row { display: flex; gap: 20px; align-items: flex-start; }
+      .col { flex: 1; min-width: 0; }
+      @media (max-width: 820px) { .row { flex-direction: column; } }
+      label.field { display: block; font-weight: 600; margin: 0 0 6px; }
+      textarea {
+        width: 100%; box-sizing: border-box; min-height: 320px; resize: vertical;
+        font: 13px var(--vessel-font-mono); line-height: 1.5;
+      }
+      .controls { display: flex; align-items: center; gap: 10px; margin: 10px 0 4px; flex-wrap: wrap; }
+      .controls label { color: var(--vessel-text-muted); }
+      .grow { flex: 1; }
+      .outputs { margin-top: 6px; }
+      .out-block { margin-bottom: 18px; }
+      .out-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+      .out-head h3 { margin: 0; font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--vessel-text-muted); }
+      .out-head .spacer { flex: 1; }
+      pre {
+        margin: 0; padding: 12px 14px; overflow: auto; max-height: 280px;
+        border: 1px solid var(--vessel-border); border-radius: var(--vessel-radius);
+        background: var(--vessel-surface);
+        font: 12.5px var(--vessel-font-mono); line-height: 1.5;
+        white-space: pre; tab-size: 2;
+      }
+      .status { font-size: 12.5px; }
+      .status.err { color: var(--vessel-danger); }
+      .status.ok { color: var(--vessel-text-muted); }
+      .pill {
+        display: inline-block; padding: 1px 8px; border-radius: 999px;
+        border: 1px solid var(--vessel-border); background: var(--vessel-field);
+        font: 11px var(--vessel-font-mono); color: var(--vessel-text-muted);
+      }
+      .out-block.bad pre { border-color: var(--vessel-danger); }
+      section.panel {
+        margin-top: 26px; padding-top: 20px; border-top: 1px solid var(--vessel-border);
+      }
+      section.panel h2 { font-size: 15px; margin: 0 0 4px; }
+      section.panel .hint { color: var(--vessel-text-muted); font-size: 12.5px; margin: 0 0 12px; }
+      .query-row { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+      .query-row input[type="text"] { flex: 1; min-width: 220px; font: 13px var(--vessel-font-mono); }
+      code.syntax { font: 12px var(--vessel-font-mono); background: var(--vessel-field); padding: 1px 5px; border-radius: 4px; }
+      .hist-list { list-style: none; margin: 0; padding: 0; }
+      .hist-list li {
+        display: flex; align-items: center; gap: 10px; padding: 8px 0;
+        border-bottom: 1px solid var(--vessel-border);
+      }
+      .hist-list .meta { flex: 1; min-width: 0; }
+      .hist-list .meta .lbl { font-weight: 600; }
+      .hist-list .meta .sub { color: var(--vessel-text-muted); font-size: 11.5px; font-family: var(--vessel-font-mono); }
+      .hist-list button { padding: 4px 10px; font-size: 12px; }
+      .empty { color: var(--vessel-text-muted); font-size: 12.5px; padding: 8px 0; }
+    </style>
+  </head>
+  <body>
+    <main class="app">
+      <header>
+        <h1>Data Converter</h1>
+        <p>
+          Convert and validate between JSON, YAML and TOML. Paste config files
+          or API payloads — Python parses all three natively, right here in your
+          browser.
+        </p>
+        <div class="privacy">
+          Runs entirely on your machine. This tool declares no network access,
+          so nothing you paste ever leaves the page.
+        </div>
+      </header>
+
+      <div class="row">
+        <div class="col">
+          <label class="field" for="input">Input</label>
+          <textarea id="input" spellcheck="false" placeholder="Paste JSON, YAML or TOML here…"></textarea>
+          <div class="controls">
+            <label for="fmt">Input format</label>
+            <select id="fmt">
+              <option value="auto">Auto-detect</option>
+              <option value="json">JSON</option>
+              <option value="yaml">YAML</option>
+              <option value="toml">TOML</option>
+            </select>
+            <button id="convert" class="vessel-primary">Convert</button>
+            <span class="grow"></span>
+            <button id="save">Save snippet</button>
+          </div>
+          <div id="status" class="status ok"></div>
+        </div>
+
+        <div class="col">
+          <label class="field">Output</label>
+          <div class="outputs" id="outputs">
+            <p class="empty">Converted JSON, YAML and TOML will appear here.</p>
+          </div>
+        </div>
+      </div>
+
+      <section class="panel">
+        <h2>Path query</h2>
+        <p class="hint">
+          Extract a value from the parsed structure. Supports dotted keys and
+          bracket indices: e.g. <code class="syntax">users[0].name</code>,
+          <code class="syntax">services.web.ports[1]</code>. Bracket indices are
+          integers; quoted keys like <code class="syntax">data["a.b"].c</code>
+          let a key contain dots.
+        </p>
+        <div class="query-row">
+          <input type="text" id="path" placeholder="e.g. services.web.ports[1]" spellcheck="false" />
+          <button id="run-query" class="vessel-primary">Query</button>
+        </div>
+        <div id="query-status" class="status"></div>
+        <pre id="query-out" hidden></pre>
+      </section>
+
+      <section class="panel">
+        <h2>Saved snippets</h2>
+        <p class="hint">Recent inputs you saved, stored inside this .vessel file.</p>
+        <ul class="hist-list" id="history"></ul>
+      </section>
+    </main>
+
+    <script>
+      "use strict";
+      const $ = (id) => document.getElementById(id);
+      const inputEl = $("input");
+      const fmtEl = $("fmt");
+      const statusEl = $("status");
+      const outputsEl = $("outputs");
+      const labels = { json: "JSON", yaml: "YAML", toml: "TOML" };
+
+      async function api(path, opts) {
+        const r = await fetch(path, opts);
+        return r.json();
+      }
+      function jsonPost(body) {
+        return {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        };
+      }
+
+      function setStatus(el, msg, kind) {
+        el.textContent = msg || "";
+        el.className = "status " + (kind || "ok");
+      }
+
+      // Build output blocks WITHOUT innerHTML of parsed content — every piece of
+      // converted/user data goes in via textContent / value, so a payload can
+      // never inject markup or script into this page.
+      function renderOutputs(data) {
+        outputsEl.replaceChildren();
+        const order = ["json", "yaml", "toml"];
+        for (const fmt of order) {
+          const o = data.outputs[fmt];
+          const block = document.createElement("div");
+          block.className = "out-block" + (o.ok ? "" : " bad");
+
+          const head = document.createElement("div");
+          head.className = "out-head";
+          const h3 = document.createElement("h3");
+          h3.textContent = labels[fmt];
+          head.appendChild(h3);
+          const spacer = document.createElement("span");
+          spacer.className = "spacer";
+          head.appendChild(spacer);
+
+          const pre = document.createElement("pre");
+          if (o.ok) {
+            pre.textContent = o.text; // escaped: textContent never parses HTML
+            const copy = document.createElement("button");
+            copy.textContent = "Copy";
+            copy.onclick = () => navigator.clipboard && navigator.clipboard.writeText(o.text);
+            head.appendChild(copy);
+          } else {
+            pre.textContent = "Not representable as " + labels[fmt] + ": " + o.error;
+          }
+          block.appendChild(head);
+          block.appendChild(pre);
+          outputsEl.appendChild(block);
+        }
+      }
+
+      async function convert() {
+        const data = await api("/api/convert", jsonPost({ text: inputEl.value, in_format: fmtEl.value }));
+        if (!data.ok) {
+          let msg = data.error || "could not parse input";
+          if (data.line) msg += " (line " + data.line + (data.col ? ", col " + data.col : "") + ")";
+          setStatus(statusEl, "Invalid input: " + msg, "err");
+          outputsEl.replaceChildren();
+          const p = document.createElement("p");
+          p.className = "empty";
+          p.textContent = "Fix the input to see output.";
+          outputsEl.appendChild(p);
+          return;
+        }
+        setStatus(statusEl, "Valid — detected " + labels[data.detected] + ".", "ok");
+        renderOutputs(data);
+      }
+
+      async function runQuery() {
+        const out = $("query-out");
+        const qs = $("query-status");
+        const data = await api(
+          "/api/query",
+          jsonPost({ text: inputEl.value, in_format: fmtEl.value, path: $("path").value })
+        );
+        if (!data.ok) {
+          let msg = data.error || "query failed";
+          if (data.line) msg += " (line " + data.line + ")";
+          setStatus(qs, msg, "err");
+          out.hidden = true;
+          return;
+        }
+        setStatus(qs, "Result (" + data.type + ")", "ok");
+        out.hidden = false;
+        out.textContent = data.result_json; // escaped via textContent
+      }
+
+      async function saveSnippet() {
+        const text = inputEl.value.trim();
+        if (!text) { setStatus(statusEl, "Nothing to save.", "err"); return; }
+        // Resolve the actual format so a saved 'auto' record is concrete.
+        const conv = await api("/api/convert", jsonPost({ text: inputEl.value, in_format: fmtEl.value }));
+        if (!conv.ok) { setStatus(statusEl, "Won't save invalid input.", "err"); return; }
+        const label = (prompt("Label for this snippet:", "") || "").slice(0, 200);
+        await api("/api/history", jsonPost({ label, in_format: conv.detected, body: inputEl.value }));
+        await loadHistory();
+        setStatus(statusEl, "Saved.", "ok");
+      }
+
+      function fmtDate(s) { return (s || "").replace("T", " "); }
+
+      async function loadHistory() {
+        const list = await api("/api/history");
+        const ul = $("history");
+        ul.replaceChildren();
+        if (!list.length) {
+          const li = document.createElement("li");
+          const span = document.createElement("span");
+          span.className = "empty";
+          span.textContent = "No saved snippets yet.";
+          li.appendChild(span);
+          ul.appendChild(li);
+          return;
+        }
+        for (const item of list) {
+          const li = document.createElement("li");
+          const meta = document.createElement("div");
+          meta.className = "meta";
+          const lbl = document.createElement("div");
+          lbl.className = "lbl";
+          lbl.textContent = item.label || "(untitled)"; // escaped
+          const sub = document.createElement("div");
+          sub.className = "sub";
+          sub.textContent = item.in_format + " · " + fmtDate(item.created_at);
+          meta.appendChild(lbl);
+          meta.appendChild(sub);
+
+          const load = document.createElement("button");
+          load.textContent = "Load";
+          load.onclick = () => {
+            inputEl.value = item.body; // textarea .value — never parsed as HTML
+            fmtEl.value = item.in_format;
+            convert();
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          };
+          const del = document.createElement("button");
+          del.className = "vessel-danger";
+          del.textContent = "Delete";
+          del.onclick = async () => {
+            await fetch("/api/history/" + item.id, { method: "DELETE" });
+            loadHistory();
+          };
+
+          li.appendChild(meta);
+          li.appendChild(load);
+          li.appendChild(del);
+          ul.appendChild(li);
+        }
+      }
+
+      $("convert").onclick = convert;
+      $("run-query").onclick = runQuery;
+      $("save").onclick = saveSnippet;
+      $("path").addEventListener("keydown", (e) => { if (e.key === "Enter") runQuery(); });
+
+      // Prefill from the seeded snippet so the tool isn't empty on first open.
+      (async () => {
+        await loadHistory();
+        const list = await api("/api/history");
+        if (list.length) {
+          inputEl.value = list[list.length - 1].body;
+          fmtEl.value = list[list.length - 1].in_format;
+          convert();
+        }
+      })();
+    </script>
+  </body>
+</html>

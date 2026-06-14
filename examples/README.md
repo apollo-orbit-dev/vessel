@@ -24,9 +24,24 @@ None hardcode colors. All data is seeded on first open and persists into the fil
 | **Workout Log** | [`workout/`](workout/) | — | Sets, PRs, and a 6-week training-volume chart. |
 | **Journal** | [`journal/`](journal/) | — | A dated journal with full-text search (SQLite FTS5, LIKE fallback) + highlight. |
 
+The next five are aimed at **developers**:
+
+| Tool | Folder | Signed | What it shows |
+|---|---|---|---|
+| **SQLite Playground** | [`sqlite-playground/`](sqlite-playground/) | — | Import any `.sqlite` file (isolated, read-only by default + write toggle), browse tables, run SQL, auto ER diagram. |
+| **Regex Tester** | [`regex-tester/`](regex-tester/) | — | Test patterns with the real CPython `re` engine (named groups, i/m/s/x); a saved pattern library. |
+| **JWT Inspector** | [`jwt-inspector/`](jwt-inspector/) | — | Decode + verify JWTs locally — HMAC via stdlib, RSA/PSS/ECDSA via `cryptography`. No network. |
+| **Data Converter** | [`data-converter/`](data-converter/) | — | Convert/validate JSON ⟷ YAML ⟷ TOML with a pure-Python path query. No network. |
+| **API Workbench** | [`api-workbench/`](api-workbench/) | — | A mini-Postman: the Python backend makes real outbound calls (no CORS wall) to a curated origin allowlist; collections + history live in the file. |
+
 Each tool supports the full create / edit / delete lifecycle of its data, so you
 can actually use it — the signed/unsigned split mirrors real distribution
 (publisher tools are signed; personal tools you made or were handed are not).
+
+The **API Workbench** is the only example that uses network: its manifest declares a
+curated `capabilities.network` allowlist (`api.github.com`, `jsonplaceholder.typicode.com`,
+`httpbin.org`, `api.publicapis.org`). To call your own API, add its origin to
+`capabilities.network` in the bundle's `manifest.json` and rebuild.
 
 ## Building a bundle from source
 

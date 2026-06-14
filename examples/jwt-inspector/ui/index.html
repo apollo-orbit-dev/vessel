@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>JWT Inspector</title>
+    <style>
+      /* Layout only — colors come from the host's --vessel-* tokens / base styles. */
+      body { margin: 0; padding: 24px; max-width: 980px; }
+      header p { color: var(--vessel-text-muted); margin-top: 4px; }
+      .safe-note {
+        border: 1px solid var(--vessel-border);
+        border-radius: var(--vessel-radius);
+        padding: 10px 14px;
+        margin: 16px 0;
+        font-size: 0.92em;
+      }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+      @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+      label { display: block; font-weight: 600; margin: 12px 0 4px; }
+      textarea, input[type="text"], input[type="password"], select { width: 100%; box-sizing: border-box; }
+      textarea { font-family: var(--vessel-font-mono); resize: vertical; }
+      .seg { font-family: var(--vessel-font-mono); white-space: pre-wrap; word-break: break-all; }
+      pre {
+        font-family: var(--vessel-font-mono);
+        white-space: pre-wrap;
+        word-break: break-word;
+        background: var(--vessel-field);
+        border: 1px solid var(--vessel-border);
+        border-radius: var(--vessel-radius);
+        padding: 12px;
+        margin: 0;
+      }
+      .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+      .badge {
+        display: inline-block;
+        padding: 2px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--vessel-border);
+        font-size: 0.85em;
+        font-weight: 600;
+      }
+      .badge-ok { border-color: var(--vessel-ok); color: var(--vessel-ok); }
+      .badge-bad { border-color: var(--vessel-danger); color: var(--vessel-danger); }
+      .status-valid { color: var(--vessel-ok); font-weight: 600; }
+      .status-invalid, .status-error { color: var(--vessel-danger); font-weight: 600; }
+      .status-not_checked, .status-unsupported { color: var(--vessel-text-muted); font-weight: 600; }
+      .claims-times { margin: 8px 0 0; font-size: 0.92em; }
+      .claims-times div { margin: 3px 0; }
+      .muted { color: var(--vessel-text-muted); }
+      .hidden { display: none; }
+      .history-item {
+        display: flex; justify-content: space-between; gap: 8px; align-items: baseline;
+        padding: 8px 0; border-bottom: 1px solid var(--vessel-border);
+      }
+      .history-item:last-child { border-bottom: none; }
+      .history-meta { font-size: 0.85em; }
+      .small { font-size: 0.85em; }
+      footer { margin-top: 28px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>JWT Inspector</h1>
+      <p>Decode and verify JSON Web Tokens — entirely on your machine.</p>
+    </header>
+
+    <div class="safe-note vessel-card">
+      <strong>Why this is safe:</strong> never paste a real token into a random
+      website — that site keeps it. This tool runs locally inside the
+      <code>.vessel</code> file and declares <em>no</em> network access, so the
+      token never leaves your computer.
+    </div>
+
+    <label for="token">Token</label>
+    <textarea id="token" rows="5" placeholder="eyJhbGciOi…  (paste a JWT here)"></textarea>
+
+    <details id="verify-box">
+      <summary>Verify signature (optional)</summary>
+      <div class="grid" style="margin-top: 12px;">
+        <div>
+          <label for="secret">HMAC shared secret (HS256/384/512)</label>
+          <input id="secret" type="password" placeholder="shared secret" autocomplete="off" />
+          <p class="small muted">Compared in constant time. Not stored.</p>
+        </div>
+        <div>
+          <label for="pem">PEM public key (RS / PS / ES)</label>
+          <textarea id="pem" rows="4" placeholder="-----BEGIN PUBLIC KEY-----" autocomplete="off"></textarea>
+          <p id="asym-note" class="small muted"></p>
+        </div>
+      </div>
+    </details>
+
+    <div class="row" style="margin-top: 16px;">
+      <button id="inspect" class="vessel-primary">Inspect</button>
+      <span id="error" class="status-error" role="alert"></span>
+    </div>
+
+    <section id="results" class="hidden" style="margin-top: 20px;">
+      <div class="row">
+        <span class="badge" id="alg-badge"></span>
+        <span id="exp-flag"></span>
+      </div>
+
+      <div id="verification" style="margin-top: 12px;">
+        <strong>Signature:</strong>
+        <span id="verify-status"></span>
+        <div id="verify-detail" class="muted small"></div>
+      </div>
+
+      <div id="times" class="claims-times"></div>
+
+      <div class="grid" style="margin-top: 16px;">
+        <div>
+          <label>Header</label>
+          <pre id="header"></pre>
+        </div>
+        <div>
+          <label>Payload (claims)</label>
+          <pre id="payload"></pre>
+        </div>
+      </div>
+
+      <div style="margin-top: 16px;">
+        <div class="row">
+          <input id="label" type="text" placeholder="label (optional)" style="max-width: 280px;" />
+          <label class="row small" style="font-weight: 400; margin: 0;">
+            <input id="store-token" type="checkbox" /> also store the raw token
+          </label>
+          <button id="save">Save to history</button>
+        </div>
+        <p class="small muted">
+          History keeps metadata only (alg, iss, sub, label). The raw token is
+          stored only if you tick the box above.
+        </p>
+      </div>
+    </section>
+
+    <footer>
+      <h2>History</h2>
+      <div id="history"></div>
+    </footer>
+
+    <script>
+      "use strict";
+      const $ = (id) => document.getElementById(id);
+      let lastInspectedToken = "";
+
+      // --- helpers -------------------------------------------------------
+      function setText(el, text) { el.textContent = text == null ? "" : String(text); }
+
+      function fmtAbs(epoch) {
+        try { return new Date(epoch * 1000).toISOString().replace("T", " ").replace(".000Z", " UTC"); }
+        catch (e) { return String(epoch); }
+      }
+
+      function fmtRel(deltaSec) {
+        // deltaSec = claim - now. Negative = in the past.
+        const past = deltaSec < 0;
+        let s = Math.abs(deltaSec);
+        const units = [["day", 86400], ["hour", 3600], ["minute", 60], ["second", 1]];
+        const parts = [];
+        for (const [name, size] of units) {
+          if (s >= size) {
+            const n = Math.floor(s / size);
+            s -= n * size;
+            parts.push(n + " " + name + (n === 1 ? "" : "s"));
+            if (parts.length === 2) break;
+          }
+        }
+        const span = parts.length ? parts.join(", ") : "0 seconds";
+        return past ? span + " ago" : "in " + span;
+      }
+
+      // --- capabilities --------------------------------------------------
+      async function loadCaps() {
+        try {
+          const caps = await (await fetch("/api/capabilities")).json();
+          if (!caps.asymmetric) {
+            setText($("asym-note"),
+              "Asymmetric verification (RS/PS/ES) is unavailable in this build. HMAC (HS*) still works.");
+            $("pem").disabled = true;
+          } else {
+            setText($("asym-note"), "RSA, RSA-PSS and ECDSA public keys supported.");
+          }
+        } catch (e) { /* leave note blank */ }
+      }
+
+      // --- rendering -----------------------------------------------------
+      function renderTimes(times) {
+        const box = $("times");
+        box.replaceChildren();
+        const order = ["iat", "nbf", "exp"];
+        const labels = { iat: "Issued at (iat)", nbf: "Not before (nbf)", exp: "Expires (exp)" };
+        for (const key of order) {
+          if (!times[key]) continue;
+          const div = document.createElement("div");
+          // textContent only — never innerHTML of token-derived values.
+          div.textContent = labels[key] + ": " + fmtAbs(times[key].value) + "  (" + fmtRel(times[key].delta) + ")";
+          box.appendChild(div);
+        }
+      }
+
+      function renderVerification(v) {
+        const statusEl = $("verify-status");
+        const labelMap = {
+          valid: "VALID", invalid: "INVALID", not_checked: "not checked",
+          unsupported: "n/a", error: "error",
+        };
+        statusEl.textContent = labelMap[v.status] || v.status;
+        statusEl.className = "status-" + v.status;
+        setText($("verify-detail"), v.detail || "");
+      }
+
+      function render(data) {
+        $("results").classList.remove("hidden");
+        setText($("alg-badge"), "alg: " + (data.alg || "?"));
+
+        const flag = $("exp-flag");
+        flag.replaceChildren();
+        if (data.expired) {
+          const b = document.createElement("span");
+          b.className = "badge badge-bad"; b.textContent = "EXPIRED";
+          flag.appendChild(b);
+        } else if (data.not_yet_valid) {
+          const b = document.createElement("span");
+          b.className = "badge badge-bad"; b.textContent = "NOT YET VALID";
+          flag.appendChild(b);
+        } else if (data.times && data.times.exp) {
+          const b = document.createElement("span");
+          b.className = "badge badge-ok"; b.textContent = "current";
+          flag.appendChild(b);
+        }
+
+        // JSON.stringify produces a plain string we assign via textContent — safe.
+        setText($("header"), JSON.stringify(data.header, null, 2));
+        setText($("payload"), JSON.stringify(data.payload, null, 2));
+        renderTimes(data.times || {});
+        renderVerification(data.verification || { status: "unsupported", detail: "" });
+      }
+
+      // --- actions -------------------------------------------------------
+      async function inspect() {
+        setText($("error"), "");
+        const token = $("token").value.trim();
+        if (!token) { setText($("error"), "Paste a token first."); return; }
+        const payload = {
+          token,
+          secret: $("secret").value,
+          public_key_pem: $("pem").value,
+        };
+        let res;
+        try {
+          res = await (await fetch("/api/inspect", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(payload),
+          })).json();
+        } catch (e) { setText($("error"), "Request failed: " + e); return; }
+        if (!res.ok) { $("results").classList.add("hidden"); setText($("error"), res.error); return; }
+        lastInspectedToken = token;
+        render(res);
+      }
+
+      async function save() {
+        if (!lastInspectedToken) return;
+        const body = {
+          label: $("label").value,
+          token: lastInspectedToken,
+          store_token: $("store-token").checked,
+        };
+        const res = await (await fetch("/api/history", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        })).json();
+        if (res.ok) { $("label").value = ""; $("store-token").checked = false; loadHistory(); }
+        else { setText($("error"), res.error || "Could not save."); }
+      }
+
+      async function loadHistory() {
+        const rows = await (await fetch("/api/history")).json();
+        const box = $("history");
+        box.replaceChildren();
+        if (!rows.length) {
+          const p = document.createElement("p");
+          p.className = "muted"; p.textContent = "No saved tokens yet.";
+          box.appendChild(p);
+          return;
+        }
+        for (const r of rows) {
+          const item = document.createElement("div");
+          item.className = "history-item";
+
+          const left = document.createElement("div");
+          const title = document.createElement("div");
+          title.textContent = r.label || "(unlabeled)";
+          title.style.fontWeight = "600";
+          const meta = document.createElement("div");
+          meta.className = "history-meta muted";
+          const bits = ["alg: " + (r.alg || "?")];
+          if (r.iss) bits.push("iss: " + r.iss);
+          if (r.sub) bits.push("sub: " + r.sub);
+          bits.push(r.inspected_at);
+          if (r.has_token) bits.push("token stored");
+          meta.textContent = bits.join("  •  ");
+          left.appendChild(title); left.appendChild(meta);
+
+          const right = document.createElement("div");
+          right.className = "row";
+          if (r.has_token) {
+            const load = document.createElement("button");
+            load.className = "small"; load.textContent = "Load";
+            load.onclick = async () => {
+              const d = await (await fetch("/api/history/" + r.id)).json();
+              if (d.ok && d.token) { $("token").value = d.token; inspect(); window.scrollTo(0, 0); }
+            };
+            right.appendChild(load);
+          }
+          const del = document.createElement("button");
+          del.className = "vessel-danger small"; del.textContent = "Delete";
+          del.onclick = async () => {
+            await fetch("/api/history/" + r.id, { method: "DELETE" });
+            loadHistory();
+          };
+          right.appendChild(del);
+
+          item.appendChild(left); item.appendChild(right);
+          box.appendChild(item);
+        }
+      }
+
+      $("inspect").onclick = inspect;
+      $("save").onclick = save;
+      loadCaps();
+      loadHistory();
+    </script>
+  </body>
+</html>

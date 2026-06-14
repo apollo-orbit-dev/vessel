@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>API Workbench</title>
+    <!-- Layout only. All colors come from the Vessel theme (--vessel-* tokens +
+         the host's base component styles). No hardcoded colors. -->
+    <style>
+      html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; }
+      .app {
+        display: grid; grid-template-columns: 240px 1fr; height: 100vh;
+        font: 14px var(--vessel-font); color: var(--vessel-text);
+        background: var(--vessel-bg); overflow: hidden;
+      }
+
+      /* sidebar */
+      aside {
+        border-right: 1px solid var(--vessel-border);
+        background: var(--vessel-surface);
+        display: flex; flex-direction: column; min-height: 0;
+      }
+      aside header {
+        padding: 14px 16px; border-bottom: 1px solid var(--vessel-border);
+        display: flex; align-items: baseline; gap: 8px;
+      }
+      aside header .name { font: 600 15px var(--vessel-font); letter-spacing: -0.01em; }
+      aside header .ver { font: 11px var(--vessel-font-mono); color: var(--vessel-text-muted); }
+      aside nav { display: flex; border-bottom: 1px solid var(--vessel-border); }
+      aside nav button {
+        flex: 1; padding: 8px 0; border: none; background: transparent;
+        color: var(--vessel-text-muted); font: 500 12.5px var(--vessel-font);
+        cursor: pointer; border-bottom: 2px solid transparent;
+      }
+      aside nav button[aria-selected="true"] {
+        color: var(--vessel-text); border-bottom-color: var(--vessel-accent);
+      }
+      .scroll { overflow-y: auto; flex: 1; min-height: 0; padding: 8px; }
+
+      .col { margin-bottom: 6px; }
+      .col > .col-head {
+        display: flex; align-items: center; gap: 6px;
+        padding: 6px 8px; border-radius: var(--vessel-radius);
+      }
+      .col-head .col-name { font: 600 12.5px var(--vessel-font); flex: 1; }
+      .col-head button.mini, .req button.mini {
+        padding: 0; width: 22px; height: 22px; display: inline-flex;
+        align-items: center; justify-content: center; line-height: 1;
+        border: 1px solid var(--vessel-border); background: var(--vessel-field);
+        color: var(--vessel-text-muted); border-radius: 6px; cursor: pointer;
+        font-size: 13px;
+      }
+      .req {
+        display: flex; align-items: center; gap: 8px;
+        padding: 5px 8px 5px 16px; border-radius: var(--vessel-radius);
+        cursor: pointer;
+      }
+      .req:hover, .col-head:hover { background: var(--vessel-field); }
+      .req[aria-current="true"] {
+        background: var(--vessel-field); outline: 1px solid var(--vessel-border);
+      }
+      .req .m {
+        font: 700 10px var(--vessel-font-mono); letter-spacing: 0.04em;
+        color: var(--vessel-accent); width: 42px; flex: none;
+      }
+      .req .rn {
+        flex: 1; font: 12.5px var(--vessel-font); white-space: nowrap;
+        overflow: hidden; text-overflow: ellipsis;
+      }
+      .req .acts { display: none; gap: 4px; }
+      .req:hover .acts { display: flex; }
+
+      /* main */
+      main { display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+
+      .note {
+        margin: 12px 16px 0; padding: 9px 12px; border-radius: var(--vessel-radius);
+        border: 1px solid var(--vessel-border); background: var(--vessel-surface);
+        font: 12px var(--vessel-font); color: var(--vessel-text-muted);
+        display: flex; gap: 8px; align-items: flex-start;
+      }
+      .note code { font: 11.5px var(--vessel-font-mono); }
+      .note strong { color: var(--vessel-text); }
+
+      .bar {
+        display: flex; gap: 8px; padding: 12px 16px; align-items: center;
+      }
+      .bar select { width: 110px; flex: none; }
+      .bar input.url { flex: 1; min-width: 0; font: 13px var(--vessel-font-mono); }
+      .bar button.send { flex: none; }
+
+      .tabs { display: flex; gap: 4px; padding: 0 16px; border-bottom: 1px solid var(--vessel-border); }
+      .tabs button {
+        padding: 8px 12px; border: none; background: transparent; cursor: pointer;
+        color: var(--vessel-text-muted); font: 500 12.5px var(--vessel-font);
+        border-bottom: 2px solid transparent; margin-bottom: -1px;
+      }
+      .tabs button[aria-selected="true"] { color: var(--vessel-text); border-bottom-color: var(--vessel-accent); }
+
+      .panel { padding: 12px 16px; overflow-y: auto; }
+      .kvrow { display: flex; gap: 8px; margin-bottom: 6px; }
+      .kvrow input { flex: 1; min-width: 0; font: 12.5px var(--vessel-font-mono); }
+      .kvrow button { padding: 0; width: 32px; flex: none; }
+      .bodyopts { display: flex; gap: 14px; margin-bottom: 8px; align-items: center; font-size: 12.5px; }
+      textarea.body { width: 100%; min-height: 160px; box-sizing: border-box; font: 12.5px var(--vessel-font-mono); resize: vertical; }
+
+      /* split: request editor (left) | response (right) */
+      .work { flex: 1; display: grid; grid-template-rows: auto auto 1fr; min-height: 0; overflow: hidden; }
+      .editor { min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+      .editor .panel { flex: 1; }
+
+      .response {
+        border-top: 1px solid var(--vessel-border); min-height: 0;
+        display: flex; flex-direction: column; overflow: hidden;
+      }
+      .resp-head {
+        display: flex; align-items: center; gap: 14px; padding: 10px 16px;
+        border-bottom: 1px solid var(--vessel-border); flex-wrap: wrap;
+      }
+      .badge {
+        font: 700 12px var(--vessel-font-mono); padding: 2px 9px;
+        border-radius: 999px; border: 1px solid var(--vessel-border);
+      }
+      .badge.ok { color: var(--vessel-ok); border-color: var(--vessel-ok); }
+      .badge.err { color: var(--vessel-danger); border-color: var(--vessel-danger); }
+      .resp-head .meta { font: 12px var(--vessel-font-mono); color: var(--vessel-text-muted); }
+      .resp-body { flex: 1; overflow: auto; padding: 0; min-height: 0; }
+      pre.out {
+        margin: 0; padding: 14px 16px; font: 12.5px var(--vessel-font-mono);
+        white-space: pre-wrap; word-break: break-word; color: var(--vessel-text);
+      }
+      .blocked {
+        margin: 14px 16px; padding: 12px 14px; border-radius: var(--vessel-radius);
+        border: 1px solid var(--vessel-danger); color: var(--vessel-danger);
+        font: 13px var(--vessel-font);
+      }
+      .blocked code { font: 12px var(--vessel-font-mono); }
+
+      table.hist { width: 100%; border-collapse: collapse; table-layout: fixed; font: 12.5px var(--vessel-font-mono); }
+      table.hist th, table.hist td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--vessel-border); word-break: break-word; }
+      table.hist th.m, table.hist td.m, table.hist th.s, table.hist td.s { width: 50px; white-space: nowrap; }
+      table.hist td.when .d { display: block; white-space: nowrap; }
+      table.hist td.when .t { display: block; white-space: nowrap; color: var(--vessel-text-muted); font-size: 11px; }
+      table.hist td.u { word-break: break-all; font-size: 11.5px; }
+      .empty { color: var(--vessel-text-muted); padding: 24px 16px; font-size: 13px; }
+      .row-actions { display: flex; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--vessel-border); }
+      .hidden { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <aside>
+        <header>
+          <span class="name">API Workbench</span>
+          <span class="ver">v1</span>
+        </header>
+        <nav role="tablist">
+          <button id="tabCollections" role="tab" aria-selected="true">Collections</button>
+          <button id="tabHistory" role="tab" aria-selected="false">History</button>
+        </nav>
+        <div class="scroll" id="sideBody"></div>
+        <div style="padding:8px;border-top:1px solid var(--vessel-border)">
+          <button id="newCol" style="width:100%">+ New collection</button>
+        </div>
+      </aside>
+
+      <main>
+        <p class="note">
+          <span aria-hidden="true">&#9432;</span>
+          <span>This bundle can reach a <strong>fixed set of origins</strong>. To
+          test your own API, add its origin to <code>capabilities.network</code>
+          in the bundle's <code>manifest.json</code> and rebuild.
+          <span id="origins"></span></span>
+        </p>
+
+        <div class="bar">
+          <select id="method" aria-label="HTTP method">
+            <option>GET</option><option>POST</option><option>PUT</option>
+            <option>PATCH</option><option>DELETE</option><option>HEAD</option>
+          </select>
+          <input class="url" id="url" placeholder="https://jsonplaceholder.typicode.com/posts/1" />
+          <button class="send vessel-primary" id="send">Send</button>
+          <button id="save">Save</button>
+        </div>
+
+        <div class="tabs" role="tablist">
+          <button id="tParams" role="tab" aria-selected="true">Query params</button>
+          <button id="tHeaders" role="tab" aria-selected="false">Headers</button>
+          <button id="tBody" role="tab" aria-selected="false">Body</button>
+        </div>
+
+        <div class="work">
+          <div class="editor">
+            <div class="panel" id="pParams"></div>
+            <div class="panel hidden" id="pHeaders"></div>
+            <div class="panel hidden" id="pBody">
+              <div class="bodyopts">
+                <label><input type="radio" name="bodymode" value="none" checked /> None</label>
+                <label><input type="radio" name="bodymode" value="raw" /> Raw</label>
+                <label><input type="radio" name="bodymode" value="json" /> JSON</label>
+              </div>
+              <textarea class="body" id="body" placeholder='{ "title": "hello" }'></textarea>
+            </div>
+          </div>
+
+          <div></div>
+
+          <section class="response" id="response">
+            <div class="resp-head" id="respHead"><span class="meta">Send a request to see the response.</span></div>
+            <div class="resp-body" id="respBody"></div>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <script>
+      // ---- tiny helpers -------------------------------------------------
+      const $ = (id) => document.getElementById(id);
+      const api = async (path, opts) => {
+        const r = await fetch(path, opts);
+        return r.json();
+      };
+      // SECURITY: never use innerHTML for any server/API-derived text.
+      // textContent escapes everything, so a malicious API response can't XSS us.
+      const esc = (el, text) => { el.textContent = text == null ? "" : String(text); };
+
+      let collections = [];
+      let allowedOrigins = [];
+      let current = null; // {id?, name, method, url, query_params, headers, body_mode, body, collection_id}
+
+      // ---- KV row editors ----------------------------------------------
+      function renderKV(container, rows, placeholderKey) {
+        container.replaceChildren();
+        const draw = () => {
+          container.replaceChildren();
+          const all = rows.concat([{ key: "", value: "" }]); // trailing blank row
+          all.forEach((row, i) => {
+            const div = document.createElement("div");
+            div.className = "kvrow";
+            const k = document.createElement("input");
+            k.placeholder = placeholderKey; k.value = row.key;
+            const v = document.createElement("input");
+            v.placeholder = "value"; v.value = row.value;
+            const sync = () => {
+              if (i >= rows.length) { if (k.value || v.value) { rows.push({ key: k.value, value: v.value }); draw(); } }
+              else { rows[i].key = k.value; rows[i].value = v.value; }
+            };
+            k.addEventListener("input", sync);
+            v.addEventListener("input", sync);
+            const del = document.createElement("button");
+            del.textContent = "×"; del.title = "Remove";
+            del.addEventListener("click", () => { if (i < rows.length) { rows.splice(i, 1); draw(); } });
+            div.append(k, v);
+            if (i < rows.length) div.append(del);
+            container.append(div);
+          });
+        };
+        draw();
+      }
+
+      function blankRequest() {
+        return { name: "New request", method: "GET", url: "", query_params: [], headers: [], body_mode: "none", body: "", collection_id: collections[0] ? collections[0].id : null };
+      }
+
+      function loadIntoEditor(req) {
+        current = JSON.parse(JSON.stringify(req));
+        $("method").value = current.method;
+        $("url").value = current.url;
+        $("body").value = current.body || "";
+        const mode = current.body_mode || "none";
+        document.querySelectorAll('input[name="bodymode"]').forEach((r) => { r.checked = r.value === mode; });
+        renderKV($("pParams"), current.query_params, "param");
+        renderKV($("pHeaders"), current.headers, "header");
+        highlightSelected();
+      }
+
+      function collectSpec() {
+        const mode = document.querySelector('input[name="bodymode"]:checked').value;
+        return {
+          method: $("method").value,
+          url: $("url").value.trim(),
+          query_params: current.query_params.filter((r) => r.key),
+          headers: current.headers.filter((r) => r.key),
+          body_mode: mode,
+          body: $("body").value,
+        };
+      }
+
+      // ---- sidebar ------------------------------------------------------
+      let view = "collections";
+
+      function highlightSelected() {
+        document.querySelectorAll(".req").forEach((el) => {
+          el.setAttribute("aria-current", current && String(current.id) === el.dataset.rid ? "true" : "false");
+        });
+      }
+
+      function renderSidebar() {
+        const side = $("sideBody");
+        side.replaceChildren();
+        if (view === "history") { renderHistory(side); return; }
+        if (!collections.length) {
+          const e = document.createElement("p"); e.className = "empty";
+          e.textContent = "No collections yet. Create one to save requests.";
+          side.append(e); return;
+        }
+        collections.forEach((col) => {
+          const wrap = document.createElement("div"); wrap.className = "col";
+          const head = document.createElement("div"); head.className = "col-head";
+          const name = document.createElement("span"); name.className = "col-name";
+          esc(name, col.name);
+          const ren = document.createElement("button"); ren.className = "mini"; ren.title = "Rename"; ren.textContent = "✎";
+          ren.addEventListener("click", async () => {
+            const nn = prompt("Rename collection", col.name);
+            if (nn && nn.trim()) { await api(`/api/collections/${col.id}`, jpost("PUT", { name: nn.trim() })); await refresh(); }
+          });
+          const del = document.createElement("button"); del.className = "mini"; del.title = "Delete collection"; del.textContent = "×";
+          del.addEventListener("click", async () => {
+            if (confirm(`Delete "${col.name}" and its requests?`)) { await api(`/api/collections/${col.id}`, { method: "DELETE" }); await refresh(); }
+          });
+          head.append(name, ren, del);
+          wrap.append(head);
+          col.requests.forEach((req) => {
+            const r = document.createElement("div"); r.className = "req"; r.dataset.rid = req.id;
+            const m = document.createElement("span"); m.className = "m"; esc(m, req.method);
+            const rn = document.createElement("span"); rn.className = "rn"; esc(rn, req.name);
+            const acts = document.createElement("span"); acts.className = "acts";
+            const rdel = document.createElement("button"); rdel.className = "mini"; rdel.title = "Delete request"; rdel.textContent = "×";
+            rdel.addEventListener("click", async (ev) => { ev.stopPropagation(); await api(`/api/requests/${req.id}`, { method: "DELETE" }); await refresh(); });
+            acts.append(rdel);
+            r.append(m, rn, acts);
+            r.addEventListener("click", () => loadIntoEditor({ ...req, collection_id: col.id }));
+            wrap.append(r);
+          });
+          side.append(wrap);
+        });
+        highlightSelected();
+      }
+
+      async function renderHistory(side) {
+        const data = await api("/api/history");
+        const top = document.createElement("div"); top.className = "row-actions";
+        const clr = document.createElement("button"); clr.className = "vessel-danger"; clr.textContent = "Clear history";
+        clr.addEventListener("click", async () => { if (confirm("Clear all history?")) { await api("/api/history", { method: "DELETE" }); renderSidebar(); } });
+        top.append(clr); side.append(top);
+        if (!data.history.length) { const e = document.createElement("p"); e.className = "empty"; e.textContent = "No requests sent yet."; side.append(e); return; }
+        const tbl = document.createElement("table"); tbl.className = "hist";
+        const thead = document.createElement("thead");
+        thead.innerHTML = "<tr><th>When</th><th class=\"m\">Method</th><th class=\"s\">Status</th></tr>"; // static markup, no user data
+        tbl.append(thead);
+        const tb = document.createElement("tbody");
+        data.history.forEach((h) => {
+          const tr = document.createElement("tr");
+          // Split "YYYY-MM-DD HH:MM:SS" onto two lines so the narrow column never
+          // breaks the timestamp mid-token.
+          const t = document.createElement("td"); t.className = "when";
+          const ts = String(h.ts == null ? "" : h.ts).split(" ");
+          const dEl = document.createElement("span"); dEl.className = "d"; esc(dEl, ts[0] || h.ts); t.append(dEl);
+          if (ts[1]) { const tEl = document.createElement("span"); tEl.className = "t"; esc(tEl, ts[1]); t.append(tEl); }
+          const m = document.createElement("td"); m.className = "m"; esc(m, h.method);
+          const s = document.createElement("td"); s.className = "s"; esc(s, h.status == null ? "blocked" : h.status);
+          tr.append(t, m, s);
+          const tr2 = document.createElement("tr");
+          const u = document.createElement("td"); u.className = "u"; u.colSpan = 3; esc(u, h.url);
+          tr2.append(u);
+          tb.append(tr, tr2);
+        });
+        tbl.append(tb); side.append(tbl);
+      }
+
+      // ---- response render ---------------------------------------------
+      function prettyMaybeJson(text, headers) {
+        const ct = (headers && (headers["content-type"] || headers["Content-Type"])) || "";
+        if (/json/i.test(ct) || /^[\s]*[\[{]/.test(text)) {
+          try { return JSON.stringify(JSON.parse(text), null, 2); } catch (_) { /* not json */ }
+        }
+        return text;
+      }
+
+      function renderResponse(res) {
+        const head = $("respHead"); const body = $("respBody");
+        head.replaceChildren(); body.replaceChildren();
+
+        if (res.ok === false) {
+          const b = document.createElement("div"); b.className = "blocked";
+          if (res.blocked) {
+            const strong = document.createElement("strong");
+            strong.textContent = "Blocked by the Vessel egress policy. ";
+            const span = document.createElement("span");
+            span.textContent = "This origin is not in the bundle's allowed list. Add it to capabilities.network in manifest.json and rebuild to reach it.";
+            const det = document.createElement("div"); det.style.marginTop = "8px";
+            const code = document.createElement("code"); esc(code, res.error);
+            det.append(code);
+            b.append(strong, span, det);
+          } else {
+            const strong = document.createElement("strong"); strong.textContent = "Request failed. ";
+            const code = document.createElement("code"); esc(code, res.error);
+            b.append(strong, code);
+          }
+          body.append(b);
+          const meta = document.createElement("span"); meta.className = "meta"; esc(meta, res.url || "");
+          head.append(meta);
+          return;
+        }
+
+        const badge = document.createElement("span");
+        badge.className = "badge " + (res.status >= 200 && res.status < 400 ? "ok" : "err");
+        esc(badge, res.status);
+        const time = document.createElement("span"); time.className = "meta"; esc(time, res.elapsed_ms + " ms");
+        const sz = document.createElement("span"); sz.className = "meta"; esc(sz, (res.body || "").length + " bytes");
+        const url = document.createElement("span"); url.className = "meta"; esc(url, res.url || "");
+        head.append(badge, time, sz, url);
+
+        // response body — ESCAPED text / pretty JSON only. Never innerHTML.
+        const pre = document.createElement("pre"); pre.className = "out";
+        esc(pre, prettyMaybeJson(res.body || "", res.headers));
+        body.append(pre);
+
+        if (res.headers && Object.keys(res.headers).length) {
+          const det = document.createElement("details"); det.style.padding = "0 16px 16px";
+          const sum = document.createElement("summary"); sum.style.cursor = "pointer"; sum.style.color = "var(--vessel-text-muted)";
+          sum.textContent = "Response headers (" + Object.keys(res.headers).length + ")";
+          const hp = document.createElement("pre"); hp.className = "out"; hp.style.padding = "8px 0 0";
+          esc(hp, Object.entries(res.headers).map(([k, v]) => k + ": " + v).join("\n"));
+          det.append(sum, hp); body.append(det);
+        }
+      }
+
+      // ---- actions ------------------------------------------------------
+      const jpost = (method, obj) => ({ method, headers: { "content-type": "application/json" }, body: JSON.stringify(obj) });
+
+      async function refresh() {
+        const data = await api("/api/collections");
+        collections = data.collections;
+        allowedOrigins = data.allowed_origins || [];
+        const o = $("origins"); o.replaceChildren();
+        if (allowedOrigins.length) {
+          o.append(document.createTextNode(" Allowed: "));
+          allowedOrigins.forEach((origin, i) => {
+            const c = document.createElement("code"); c.textContent = origin;
+            o.append(c);
+            if (i < allowedOrigins.length - 1) o.append(document.createTextNode(", "));
+          });
+        }
+        if (!current) {
+          const first = collections[0] && collections[0].requests[0];
+          loadIntoEditor(first ? { ...first, collection_id: collections[0].id } : blankRequest());
+        }
+        renderSidebar();
+      }
+
+      $("send").addEventListener("click", async () => {
+        const spec = collectSpec();
+        if (!spec.url) { alert("Enter a URL first."); return; }
+        $("respHead").replaceChildren(Object.assign(document.createElement("span"), { className: "meta", textContent: "Sending…" }));
+        $("respBody").replaceChildren();
+        try {
+          const res = await api("/api/send", jpost("POST", spec));
+          renderResponse(res);
+          if (view === "history") renderSidebar();
+        } catch (e) {
+          renderResponse({ ok: false, blocked: false, error: String(e), url: spec.url });
+        }
+      });
+
+      $("save").addEventListener("click", async () => {
+        if (!collections.length) { alert("Create a collection first."); return; }
+        const spec = collectSpec();
+        const name = prompt("Save request as", current && current.name ? current.name : "New request");
+        if (!name || !name.trim()) return;
+        const payload = { ...spec, name: name.trim(), collection_id: current.collection_id || collections[0].id };
+        if (current && current.id) {
+          await api(`/api/requests/${current.id}`, jpost("PUT", payload));
+        } else {
+          const r = await api("/api/requests", jpost("POST", payload));
+          current.id = r.id;
+        }
+        await refresh();
+      });
+
+      $("newCol").addEventListener("click", async () => {
+        const name = prompt("New collection name", "My collection");
+        if (!name || !name.trim()) return;
+        await api("/api/collections", jpost("POST", { name: name.trim() }));
+        await refresh();
+      });
+
+      // ---- tab wiring ---------------------------------------------------
+      function pickSideTab(v) {
+        view = v;
+        $("tabCollections").setAttribute("aria-selected", String(v === "collections"));
+        $("tabHistory").setAttribute("aria-selected", String(v === "history"));
+        renderSidebar();
+      }
+      $("tabCollections").addEventListener("click", () => pickSideTab("collections"));
+      $("tabHistory").addEventListener("click", () => pickSideTab("history"));
+
+      function pickEditTab(which) {
+        const map = { params: "pParams", headers: "pHeaders", body: "pBody" };
+        const tabs = { params: "tParams", headers: "tHeaders", body: "tBody" };
+        Object.entries(map).forEach(([k, id]) => $(id).classList.toggle("hidden", k !== which));
+        Object.entries(tabs).forEach(([k, id]) => $(id).setAttribute("aria-selected", String(k === which)));
+      }
+      $("tParams").addEventListener("click", () => pickEditTab("params"));
+      $("tHeaders").addEventListener("click", () => pickEditTab("headers"));
+      $("tBody").addEventListener("click", () => pickEditTab("body"));
+
+      refresh();
+    </script>
+  </body>
+</html>

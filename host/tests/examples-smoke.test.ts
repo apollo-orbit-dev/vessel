@@ -5,14 +5,19 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// Functional smoke for the ten Phase-12 example bundles. Boots each built
-// examples/<slug>/<slug>.vessel through the real fetch->ASGI->SQLite bridge,
-// exercises its primary read + the full create/edit/delete lifecycle, and
-// proves the save->reopen persistence trip for a representative tool.
+// Functional smoke for the fifteen example bundles (ten Phase-12 + five
+// Phase-17 developer tools). Boots each built examples/<slug>/<slug>.vessel
+// through the real fetch->ASGI->SQLite bridge, exercises its primary read + the
+// full create/edit/delete lifecycle, and proves the save->reopen persistence
+// trip for a representative tool.
 //
-// GATED: createRuntime micropip-installs FastAPI per boot (network) and this
-// boots Pyodide ~11x, so it is heavy. SKIPPED by default; run on demand:
+// GATED: createRuntime micropip-installs FastAPI (+ cryptography/pyyaml/tomli-w
+// for some Phase-17 tools) per boot (network) and this boots Pyodide ~16x, so it
+// is heavy. SKIPPED by default; run on demand:
 //   SMOKE_EXAMPLES=1 npx vitest run examples-smoke   (from host/)
+// The api-workbench case exercises only its local CRUD (collections/requests/
+// history), never a live outbound request — egress isn't installed in this
+// Node harness, and the network path was verified live during authoring.
 const RUN = !!process.env.SMOKE_EXAMPLES;
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -198,6 +203,114 @@ const TOOLS: Record<string, (rt: any) => Promise<string>> = {
     const s3 = ok(await get(rt, "/api/entries"), "entries3");
     expect(s3.total).toBe(before);
     return `entries ${before}->${s2.total}->${s3.total}; search mode=${r.search_mode}; new entry searchable`;
+  },
+  "sqlite-playground": async (rt) => {
+    // No DB imported yet: status reflects it and the run guard refuses.
+    const st = ok(await get(rt, "/api/status"), "status");
+    expect(st.imported).toBe(false);
+    const guard = ok(await req(rt, "POST", "/api/run", { sql: "SELECT 1" }), "run-noimport");
+    expect(guard.ok).toBe(false); // "No database imported."
+    // The bundle's OWN store (saved queries) is the CRUD that travels in the file.
+    const s0 = ok(await get(rt, "/api/saved"), "saved0");
+    const before = s0.saved.length;
+    const saved = ok(await req(rt, "POST", "/api/saved", { name: "Smoke", sql: "SELECT 1" }), "save");
+    expect(saved.ok).toBe(true);
+    const s1 = ok(await get(rt, "/api/saved"), "saved1");
+    expect(s1.saved.length).toBe(before + 1);
+    ok(await req(rt, "POST", "/api/saved/delete", { id: saved.id }), "del-saved");
+    const s2 = ok(await get(rt, "/api/saved"), "saved2");
+    expect(s2.saved.length).toBe(before);
+    return `imported=${st.imported}; run guarded; saved ${before}->${s1.saved.length}->${s2.saved.length}`;
+  },
+  "regex-tester": async (rt) => {
+    const t = ok(await req(rt, "POST", "/api/test", { pattern: "(?P<y>\\d{4})-(\\d{2})", flags: "", text: "2026-06 and 1999-12" }), "test");
+    expect(t.ok).toBe(true);
+    expect(t.match_count).toBe(2);
+    expect(t.group_count).toBe(2);
+    const bad = ok(await req(rt, "POST", "/api/test", { pattern: "(", flags: "", text: "x" }), "bad");
+    expect(bad.ok).toBe(false); // compile error returned, not a 500
+    const p0 = ok(await get(rt, "/api/patterns"), "patterns");
+    const before = p0.patterns.length;
+    const created = ok(await req(rt, "POST", "/api/patterns", { name: "Smoke pat", pattern: "\\d+", flags: "i", note: "" }), "add");
+    const pid = created.pattern.id;
+    const p1 = ok(await get(rt, "/api/patterns"), "patterns2");
+    expect(p1.patterns.length).toBe(before + 1);
+    ok(await req(rt, "PUT", `/api/patterns/${pid}`, { name: "Smoke pat 2", pattern: "\\w+", flags: "", note: "edited" }), "edit");
+    ok(await req(rt, "DELETE", `/api/patterns/${pid}`), "del");
+    const p2 = ok(await get(rt, "/api/patterns"), "patterns3");
+    expect(p2.patterns.length).toBe(before);
+    return `matches=${t.match_count} groups=${t.group_count}; bad-pattern handled; patterns ${before}->${p1.patterns.length}->${p2.patterns.length}`;
+  },
+  "jwt-inspector": async (rt) => {
+    const cap = ok(await get(rt, "/api/capabilities"), "caps");
+    expect(cap.hmac).toBe(true);
+    // The canonical jwt.io HS256 sample (secret: "your-256-bit-secret").
+    const TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
+    const dec = ok(await req(rt, "POST", "/api/inspect", { token: TOKEN }), "decode");
+    expect(dec.ok).toBe(true);
+    expect(dec.alg).toBe("HS256");
+    expect(dec.payload.sub).toBe("1234567890");
+    expect(dec.verification.status).toBe("not_checked"); // no secret supplied
+    const good = ok(await req(rt, "POST", "/api/inspect", { token: TOKEN, secret: "your-256-bit-secret" }), "verify-good");
+    expect(good.verification.status).toBe("valid");
+    const wrong = ok(await req(rt, "POST", "/api/inspect", { token: TOKEN, secret: "nope" }), "verify-bad");
+    expect(wrong.verification.status).toBe("invalid");
+    const h0 = ok(await get(rt, "/api/history"), "hist0");
+    const before = h0.length;
+    const sv = ok(await req(rt, "POST", "/api/history", { label: "smoke", token: TOKEN, store_token: false }), "save");
+    expect(sv.ok).toBe(true);
+    const h1 = ok(await get(rt, "/api/history"), "hist1");
+    expect(h1.length).toBe(before + 1);
+    expect(h1[0].has_token).toBe(false); // metadata-only by default
+    ok(await req(rt, "DELETE", `/api/history/${sv.id}`), "del");
+    const h2 = ok(await get(rt, "/api/history"), "hist2");
+    expect(h2.length).toBe(before);
+    return `decode alg=${dec.alg}; HS256 valid/invalid ok; asymmetric=${cap.asymmetric}; history metadata-only`;
+  },
+  "data-converter": async (rt) => {
+    const conv = ok(await req(rt, "POST", "/api/convert", { text: '{"a": 1, "b": [2, 3]}', in_format: "json" }), "convert");
+    expect(conv.ok).toBe(true);
+    expect(conv.outputs.yaml.ok).toBe(true);
+    expect(conv.outputs.toml.ok).toBe(true);
+    // round-trip: parse the emitted YAML back
+    const back = ok(await req(rt, "POST", "/api/convert", { text: conv.outputs.yaml.text, in_format: "yaml" }), "convert-back");
+    expect(back.ok).toBe(true);
+    const q = ok(await req(rt, "POST", "/api/query", { text: '{"users": [{"name": "ann"}]}', in_format: "json", path: "users[0].name" }), "query");
+    expect(q.ok).toBe(true);
+    expect(JSON.parse(q.result_json)).toBe("ann");
+    const bad = ok(await req(rt, "POST", "/api/convert", { text: "{bad", in_format: "json" }), "bad");
+    expect(bad.ok).toBe(false); // parse error returned, not a 500
+    const h0 = ok(await get(rt, "/api/history"), "hist0");
+    const before = h0.length;
+    const sv = ok(await req(rt, "POST", "/api/history", { label: "smoke", in_format: "json", body: "{}" }), "save");
+    expect(sv.ok).toBe(true);
+    const h1 = ok(await get(rt, "/api/history"), "hist1");
+    expect(h1.length).toBe(before + 1);
+    ok(await req(rt, "DELETE", `/api/history/${sv.id}`), "del");
+    const h2 = ok(await get(rt, "/api/history"), "hist2");
+    expect(h2.length).toBe(before);
+    return `json->yaml/toml ok; yaml round-trip; path=ann; bad-json handled; history ${before}->${h1.length}->${h2.length}`;
+  },
+  "api-workbench": async (rt) => {
+    // Local CRUD only — no live outbound request in this harness.
+    const c0 = ok(await get(rt, "/api/collections"), "collections");
+    expect(c0.collections.length).toBeGreaterThan(0);
+    expect(c0.allowed_origins.length).toBeGreaterThan(0);
+    const beforeCols = c0.collections.length;
+    const created = ok(await req(rt, "POST", "/api/collections", { name: "Smoke Coll" }), "add-coll");
+    const cid = created.id;
+    const c1 = ok(await get(rt, "/api/collections"), "collections2");
+    expect(c1.collections.length).toBe(beforeCols + 1);
+    const r = ok(await req(rt, "POST", "/api/requests", { collection_id: cid, name: "Smoke Req", method: "GET", url: "https://httpbin.org/get", query_params: [], headers: [], body_mode: "none", body: "" }), "add-req");
+    const rid = r.id;
+    const c2 = ok(await get(rt, "/api/collections"), "collections3");
+    const coll = c2.collections.find((x: any) => x.id === cid);
+    expect(coll.requests.length).toBe(1);
+    ok(await req(rt, "DELETE", `/api/requests/${rid}`), "del-req");
+    ok(await req(rt, "DELETE", `/api/collections/${cid}`), "del-coll");
+    const c3 = ok(await get(rt, "/api/collections"), "collections4");
+    expect(c3.collections.length).toBe(beforeCols);
+    return `collections ${beforeCols}->${c1.collections.length}->${c3.collections.length}; request add/delete ok; ${c0.allowed_origins.length} curated origins`;
   },
 };
 
