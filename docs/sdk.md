@@ -9,7 +9,8 @@ via `@vessel/core`, so what builds is exactly what the host opens.
 |---|---|
 | `vessel new <name> [dir]` | Scaffold a project (FastAPI + SQLite + a self-contained UI). |
 | `vessel dev [dir] [-p port]` | Local dev server with **host parity** (runs the backend in Pyodide-in-Node) + hot reload. |
-| `vessel build [dir] [-o out.vessel] [--sign key]` | Package a source dir into a `.vessel`, re-validated with the host's own loader; `--sign` adds an Ed25519 signature. |
+| `vessel build [dir] [-o out.vessel] [--sign key]` | Package a source dir into a `.vessel`, re-validated with the host's own loader; inlines local UI assets (see below); `--sign` adds an Ed25519 signature. |
+| `vessel inspect <file.vessel> [--json]` | Examine a built bundle without running it: manifest, capabilities, declared packages, per-file sizes, signing status, and validation warnings. `--json` for tooling. |
 | `vessel keygen <name>` | Generate an Ed25519 signing keypair → `<name>.key` (secret) + `<name>.pub` (share). |
 
 ## A bundle source directory
@@ -17,9 +18,15 @@ via `@vessel/core`, so what builds is exactly what the host opens.
 mytool/
 ├── manifest.json        # identity, entry points, declared packages
 ├── app/main.py          # FastAPI app — routes must be `async def`
-├── ui/index.html        # single self-contained UI file (v1)
+├── ui/index.html        # the UI entry; may reference local ui/*.js + *.css —
+│                        #   `vessel build` inlines them into one self-contained file
 └── data/store.sqlite    # the database that travels in the bundle
 ```
+You can split the UI into `ui/index.html` + local `<script src>` / `<link rel="stylesheet">`
+files; `vessel build` inlines them so the shipped bundle is a single self-contained
+`index.html` (the host serves only that file). Remote (`https://…`) and `data:` refs are
+left as-is. ES-module *graphs* aren't flattened — keep module UIs flat or pre-bundle them.
+
 See `docs/format.md` for the manifest schema and limits.
 
 ## Typical loop
@@ -44,5 +51,7 @@ the on-disk `data/store.sqlite`.
 ## Notes
 - Not yet published to npm (the publish name is pending). For now it runs from
   the monorepo: `node sdk/dist/cli.mjs <cmd>` after `npm run build -w @vessel/sdk`.
-- Deferred value-adds: single-file UI inlining and dependency-closure
-  computation. (Ed25519 signing is implemented: `vessel keygen` / `build --sign`.)
+- Single-file UI inlining and Ed25519 signing (`vessel keygen` / `build --sign`)
+  are implemented. Deferred: build-time package validation + wheel vendoring for
+  offline bundles, and ES-module graph bundling (transitive *Python* deps already
+  resolve at load via micropip). See `open_items.md`.

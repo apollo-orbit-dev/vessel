@@ -4,6 +4,7 @@ import { buildBundle } from "./commands/build";
 import { newBundle } from "./commands/new";
 import { dev } from "./commands/dev";
 import { keygen } from "./commands/keygen";
+import { inspect } from "./commands/inspect";
 
 const HELP = `vessel — author .vessel tool bundles
 
@@ -11,6 +12,7 @@ Usage:
   vessel new <name> [dir]              Scaffold a new bundle project
   vessel dev [dir] [-p port]           Run a local dev server (host parity + reload)
   vessel build [dir] [-o out] [--sign key]   Package (and optionally sign) a .vessel
+  vessel inspect <file.vessel> [--json]      Examine a built bundle (no code runs)
   vessel keygen <name>                 Generate an Ed25519 signing keypair
   vessel --help
 
@@ -19,6 +21,7 @@ Examples:
   vessel dev examples/notes            Develop with hot reload
   vessel keygen acme                   -> acme.key (secret) + acme.pub (share)
   vessel build . --sign acme.key       Build a signed bundle
+  vessel inspect my-tool.vessel        Show manifest, sizes, signing, warnings
 `;
 
 /** Returns an exit code, or null to keep running (dev server). */
@@ -60,6 +63,20 @@ async function main(argv: string[]): Promise<number | null> {
         });
         const out = await buildBundle({ dir: positionals[0] ?? ".", out: values.out, sign: values.sign });
         console.log(`built ${out}${values.sign ? " (signed)" : ""}`);
+        return 0;
+      }
+      case "inspect": {
+        const { values, positionals } = parseArgs({
+          args: argv.slice(1),
+          options: { json: { type: "boolean" } },
+          allowPositionals: true,
+        });
+        const file = positionals[0];
+        if (!file) {
+          console.error("usage: vessel inspect <file.vessel> [--json]");
+          return 1;
+        }
+        await inspect({ file, json: values.json });
         return 0;
       }
       case "keygen": {

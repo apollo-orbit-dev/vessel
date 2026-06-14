@@ -22,10 +22,17 @@ mytool.vessel  (ZIP)
 ```
 
 ### UI note (v1)
-The UI entry must be a **single self-contained HTML file** (assets inlined).
-Multi-file UI builds (external `assets/*.js|css`) require a virtual origin to
-serve them into the sandboxed iframe and are not supported in v1 (a
-service-worker transport or SDK single-file builds would lift this).
+The shipped UI entry must be a **single self-contained HTML file** — the host
+serves only the manifest `ui` file into the sandboxed iframe; external
+`assets/*.js|css` are not served in v1 (a service-worker virtual-origin
+transport would lift this at the host level).
+
+At **authoring** time you don't have to inline by hand: `vessel build` inlines
+local `<script src>` / `<link rel="stylesheet">` into `index.html` (remote
+`https://…` and `data:` refs are left as-is). ES-module *graphs* are not
+bundled. Hand-built bundles (not via `vessel build`) must inline everything
+themselves. `vessel inspect` warns if a bundle's UI still references a separate
+local asset.
 
 ## Entry paths
 Every path inside a bundle (manifest `ui`/`data`, and every ZIP entry) must be a

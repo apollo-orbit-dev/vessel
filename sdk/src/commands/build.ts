@@ -9,6 +9,7 @@ import {
   type KeyPairB64,
 } from "@vessel/core";
 import { collectDir } from "../source";
+import { inlineHtml } from "../inline";
 import { slug } from "../template";
 
 export interface BuildOptions {
@@ -29,6 +30,12 @@ export async function buildBundle(opts: BuildOptions): Promise<string> {
   if (!files["manifest.json"]) {
     throw new BundleError(`no manifest.json found in ${opts.dir}`);
   }
+
+  // Inline the UI's local <script src>/<link stylesheet> into a single
+  // self-contained file, so a multi-file UI (which works in `vessel dev`) also
+  // works once packaged — the host serves only the manifest `ui` file. Inlined
+  // assets are dropped from the bundle (the host wouldn't serve them anyway).
+  inlineUiAssets(files);
 
   if (opts.sign) {
     let kp: KeyPairB64;
@@ -56,4 +63,25 @@ export async function buildBundle(opts: BuildOptions): Promise<string> {
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, bytes);
   return out;
+}
+
+/** Inline local UI assets into the manifest `ui` file (in place on `files`). */
+function inlineUiAssets(files: Record<string, Uint8Array>): void {
+  let uiPath: unknown;
+  try {
+    uiPath = JSON.parse(new TextDecoder().decode(files["manifest.json"])).ui;
+  } catch {
+    return; // malformed manifest — readBundle will surface the real error later
+  }
+  if (typeof uiPath !== "string" || !files[uiPath] || !uiPath.endsWith(".html")) return;
+
+  const html = new TextDecoder().decode(files[uiPath]);
+  const { html: inlinedHtml, inlined, warnings } = inlineHtml(html, uiPath, files);
+  for (const w of warnings) console.error(`warning: ${w}`);
+  if (inlined.length === 0) return;
+
+  files[uiPath] = new TextEncoder().encode(inlinedHtml);
+  for (const p of inlined) {
+    if (p !== uiPath) delete files[p]; // drop now-inlined assets (host won't serve them)
+  }
 }

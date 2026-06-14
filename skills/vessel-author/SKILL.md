@@ -12,7 +12,7 @@ A `.vessel` is a ZIP archive (OPC/`.xlsx`-style) that carries a tool's UI, a Pyt
 ```
 mytool.vessel  (ZIP, manifest.json at the root)
 ├── manifest.json      # required
-├── ui/index.html      # required: ONE self-contained HTML file (assets inlined)
+├── ui/index.html      # required: UI entry — `vessel build` inlines local ui/*.js + *.css into it
 ├── app/main.py        # required: the FastAPI backend module
 ├── app/__init__.py    # include so `app` imports as a package
 ├── data/store.sqlite  # required: ships in the bundle (may be empty)
@@ -41,7 +41,7 @@ Paths must be **safe relative paths**: no leading `/`, no `..`, no backslashes; 
 ## Hard constraints (these break bundles if ignored)
 - **`async def` routes only.** Pyodide has no OS threads; FastAPI sends sync (`def`) routes to a threadpool, which raises "can't start new thread". Every route must be `async def`.
 - **Declare every package** in `packages`. Nothing is auto-installed except stdlib. `micropip` loads the dependency closure for listed dists (FastAPI pulls pydantic etc.), but you must list the top-level ones (at minimum `"fastapi"`).
-- **One self-contained `ui/index.html`.** Inline all CSS/JS; external `assets/*.js|css` are NOT served in v1. (You can use React etc., but emit a single inlined HTML file.)
+- **Single self-contained `ui/index.html` (the host serves only this file).** You can split your source into local `ui/*.js` + `*.css` — `vessel build` inlines local `<script src>` / `<link rel="stylesheet">` into `index.html` for you (remote `https://…` and `data:` refs are left as-is). ES-module *graphs* aren't bundled: keep a module UI flat or pre-bundle it (esbuild/Vite). If you hand-zip a bundle instead of using `vessel build`, you must inline everything yourself — anything not in `index.html` won't be served.
 - **SQLite via stdlib `sqlite3`**, opened at the manifest `data` path **relative to the bundle root** (e.g. `"data/store.sqlite"`). The host persists this file back into the `.vessel` on save. Ship the file even if empty (a 0-byte file is a valid new DB).
 - **Default-deny network.** Bundle code (Python and UI) can reach only the `https` origins listed in `capabilities.network`. Omit it and there is no network — which is fine, because the UI talks to the backend over an in-process bridge, not the network (see below).
 - **Request/response only** — no WebSockets or streaming responses in v1.
@@ -158,7 +158,7 @@ Zip the directory with `manifest.json` at the root and the `.vessel` extension. 
 | `backend` as a file path (`"app/main.py"`) | `backend` is dotted `module:attr` (`"app.main:app"`) |
 | Sync `def` routes | `async def` only — Pyodide has no threads |
 | Forgot `packages` | List every top-level PyPI dist (at least `"fastapi"`) or it won't load |
-| Multi-file UI (external JS/CSS) | One self-contained `ui/index.html`, assets inlined |
+| Hand-zipped multi-file UI (host serves only the ui file) | Build with `vessel build` (it inlines local JS/CSS), or inline manually |
 | `permissions.network: []` | `capabilities.network: ["https://…"]`; omit entirely for no network |
 | WebSockets / streaming responses | Request/response only in v1 |
 | Opening the DB at an absolute path | Open it at the relative `data/...` path from the manifest |
