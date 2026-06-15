@@ -36,9 +36,16 @@ const FORCE = process.argv.includes("--force");
 
 // Packages our shipped examples declare, plus the always-loaded runtime baseline.
 const SEEDS = ["fastapi", "cryptography", "pyyaml", "tomli-w", "sqlite3", "micropip"];
-const CORE = ["pyodide.mjs", "pyodide.asm.js", "pyodide.asm.wasm", "python_stdlib.zip"];
+const CORE = ["pyodide.mjs", "pyodide.asm.js", "pyodide.asm.wasm"];
 
 const norm = (s) => s.toLowerCase().replace(/[_.]/g, "-");
+
+// Corporate proxies commonly block archive downloads by .zip extension or the
+// application/x-zip-compressed content-type. Serve every .zip asset as a .bin
+// (octet-stream, no ".zip" in the URL) instead — Pyodide loads these by content,
+// not extension. (.whl is also a zip but passes such filters, so this is purely
+// about the .zip extension/content-type, not the bytes.)
+const debin = (f) => (f.endsWith(".zip") ? f.slice(0, -4) + ".bin" : f);
 
 function closure(lock, seeds) {
   // Map normalized name -> package entry (lock keys are already normalized, but
@@ -75,29 +82,32 @@ async function main() {
   mkdirSync(DEST, { recursive: true });
   const lock = JSON.parse(readFileSync(join(PKG, "pyodide-lock.json"), "utf8"));
 
-  // 1. Core (copy from the npm package).
+  // 1. Core (copy from the npm package). python_stdlib.zip is renamed to .bin
+  //    (loaded via the worker's stdLibURL option).
   for (const f of CORE) copyFileSync(join(PKG, f), join(DEST, f));
-  console.log(`core: ${CORE.length} files copied (pyodide ${VERSION})`);
+  copyFileSync(join(PKG, "python_stdlib.zip"), join(DEST, "python_stdlib.bin"));
+  console.log(`core: ${CORE.length + 1} files copied (pyodide ${VERSION})`);
 
-  // 2. Wheel closure (download from the pinned CDN).
+  // 2. Wheel closure (download from the pinned CDN; .zip → .bin on save).
   const want = closure(lock, SEEDS);
   // Resolve entries case-insensitively (lock keys are normalized, but be safe).
   const byName = new Map(Object.entries(lock.packages).map(([k, v]) => [norm(k), v]));
   const wheelFiles = [...want].map((n) => byName.get(n).file_name);
   let got = 0;
-  for (const f of wheelFiles) if (await download(f, join(DEST, f))) got++;
+  for (const f of wheelFiles) if (await download(f, join(DEST, debin(f)))) got++;
   console.log(`wheels: ${wheelFiles.length} in closure (${got} downloaded, ${wheelFiles.length - got} cached)`);
 
-  // 3. Patched lock: vendored packages stay relative (same-origin); everything
-  //    else gets an absolute jsdelivr file_name (CDN fallback for exotic bundles).
+  // 3. Patched lock: vendored packages stay relative + .zip→.bin (same-origin);
+  //    everything else gets an absolute jsdelivr file_name (CDN fallback).
   for (const [k, v] of Object.entries(lock.packages)) {
-    if (!want.has(norm(k)) && v.file_name && !/^https?:\/\//.test(v.file_name)) {
-      v.file_name = CDN + v.file_name;
-    }
+    if (!v.file_name) continue;
+    if (want.has(norm(k))) v.file_name = debin(v.file_name);
+    else if (!/^https?:\/\//.test(v.file_name)) v.file_name = CDN + v.file_name;
   }
   writeFileSync(join(DEST, "pyodide-lock.json"), JSON.stringify(lock));
 
-  const total = [...CORE, ...wheelFiles].reduce((s, f) => s + statSync(join(DEST, f)).size, 0);
+  const onDisk = ["python_stdlib.bin", ...CORE, ...wheelFiles.map(debin)];
+  const total = onDisk.reduce((s, f) => s + statSync(join(DEST, f)).size, 0);
   console.log(`done → host/public/pyodide/  (~${mb(total)} MB; ${wheelFiles.length} wheels + core)`);
 }
 

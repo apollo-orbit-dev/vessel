@@ -30,7 +30,14 @@ const api = {
   // domains the user approved; empty if denied or none declared).
   async init(bundle: BundleParts, allowedOrigins: string[]): Promise<void> {
     const mod = await import(/* @vite-ignore */ `${PYODIDE_BASE}pyodide.mjs`);
-    const pyodide = (await mod.loadPyodide({ indexURL: PYODIDE_BASE })) as PyodideLike;
+    // stdLibURL points at a .bin (not .zip): corporate proxies commonly block
+    // archive downloads by .zip extension/content-type. Vendoring renames every
+    // .zip asset to .bin (served as octet-stream); the lock's .zip file_names are
+    // rewritten to match. See host/scripts/vendor-pyodide.mjs.
+    const pyodide = (await mod.loadPyodide({
+      indexURL: PYODIDE_BASE,
+      stdLibURL: `${PYODIDE_BASE}python_stdlib.bin`,
+    })) as PyodideLike;
     runtime = await createRuntime(pyodide, bundle, {
       // Default-deny egress: lock the worker's fetch/XHR before any bundle code.
       installEgress: () => installEgressPolicy(self, new Set(allowedOrigins)),
