@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- freedesktop shared-mime-info definition for .vessel files.
+     A .vessel is a ZIP, so desktops content-sniff it as application/zip and
+     offer no distinct type to associate. Declaring application/vessel as a
+     subclass of zip with the *.vessel glob makes the resolver prefer this more
+     specific type for *.vessel files. Install with ./install.sh (no root). -->
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/vessel">
+    <comment>Vessel tool bundle</comment>
+    <sub-class-of type="application/zip"/>
+    <glob pattern="*.vessel"/>
+    <icon name="application-vessel"/>
+  </mime-type>
+</mime-info>
