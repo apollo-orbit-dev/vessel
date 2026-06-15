@@ -9,6 +9,7 @@ export interface Prefs {
   warnNet: boolean;
   multiWin: boolean;
   theme: string; // active built-in bundle theme id
+  source: "encoded" | "cdn"; // where the Pyodide runtime loads from
 }
 
 function PrefRow({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
@@ -37,11 +38,13 @@ export function Settings({
   prefs,
   onToggle,
   onSetTheme,
+  onSetSource,
   onClose,
 }: {
   prefs: Prefs;
   onToggle: (key: "cache" | "warnNet" | "multiWin") => void;
   onSetTheme: (id: string) => void;
+  onSetSource: (id: "encoded" | "cdn") => void;
   onClose: () => void;
 }) {
   const t = useTheme();
@@ -109,6 +112,20 @@ export function Settings({
             <PrefRow label="Open each tool in its own window" hint="Matches the double-click-to-open behavior of .vessel files.">
               <Toggle on={prefs.multiWin} onClick={() => onToggle("multiWin")} />
             </PrefRow>
+            <div style={{ ...SECTION, color: t.textMuted, margin: "16px 0 10px" }}>Runtime source</div>
+            <SegText
+              value={prefs.source}
+              onChange={(id) => onSetSource(id as "encoded" | "cdn")}
+              options={[
+                { id: "encoded", label: "This site" },
+                { id: "cdn", label: "CDN" },
+              ]}
+            />
+            <div style={{ fontSize: 11.5, color: t.textMuted, marginTop: 8, lineHeight: 1.45 }}>
+              Where the Python runtime downloads from. <strong>This site</strong> (default) serves it from
+              getvessel.dev and works behind strict corporate proxies; <strong>CDN</strong> uses jsdelivr.
+              Takes effect the next time you open a tool.
+            </div>
           </div>
         </div>
 

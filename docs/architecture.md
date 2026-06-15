@@ -7,9 +7,11 @@ npm-workspaces monorepo — `core/` (shared format + runtime), `host/` (the PWA)
 and `sdk/` (the authoring CLI) — plus a static landing page in `site/`.
 
 **Runtime.** A bundle's Python runs in a **Web Worker** (`host/src/runtime.worker.ts`,
-via Comlink), off the host's main thread. The worker loads Pyodide **same-origin**
-from `/app/pyodide/` (self-hosted — vendored at build by `host/scripts/vendor-pyodide.mjs`,
-no third-party CDN at runtime), mounts the
+via Comlink), off the host's main thread. The worker loads Pyodide from the source
+chosen in Settings — default **`encoded`**: same-origin `/app/pyodide/`, self-hosted
+(vendored at build by `host/scripts/vendor-pyodide.mjs`) with archive assets
+XOR-obfuscated as `.enc` and decoded in the worker, so it boots even behind proxies
+that block CDNs *or* archive downloads (`cdn` is the alternate). It mounts the
 bundle's sources + SQLite DB, and serves the bundle's FastAPI/Starlette app
 through a `fetch`→ASGI bridge (`core/src/runtime.ts`). The bundle's UI renders in
 a **sandboxed, opaque-origin iframe**; its `fetch('/api/...')` calls ride a

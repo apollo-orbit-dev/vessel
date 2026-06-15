@@ -5,16 +5,21 @@
 // fetches (or sinkhole CDNs): the host page already loads same-origin, so the
 // runtime will too.
 //
-// What it vendors:
-//   - core: pyodide.mjs / .asm.js / .asm.wasm / python_stdlib.zip (from the
-//     pinned `pyodide` npm package — no download needed for these).
-//   - wheels: the dependency CLOSURE of the packages our shipped examples use
-//     (fastapi, cryptography, pyyaml, tomli-w) + the runtime baseline
-//     (sqlite3, micropip), downloaded from the pinned Pyodide CDN at build time.
-//   - a PATCHED pyodide-lock.json: vendored packages keep relative file_names
-//     (resolved same-origin); every OTHER package's file_name is rewritten to an
-//     absolute jsdelivr URL, so an exotic third-party bundle still resolves its
-//     wheels via the CDN when the network allows (graceful fallback).
+// Archive assets are also XOR-obfuscated (served as `<name>.enc`) so a proxy that
+// inspects content and blocks archive (ZIP) downloads sees opaque bytes; the
+// runtime worker decodes them. The host's "Runtime source" setting picks
+// encoded-same-origin (default) vs the CDN.
+//
+// What it vendors (into host/public/pyodide/):
+//   - core, raw: pyodide.mjs / .asm.js / .asm.wasm (not archives → proxies pass them).
+//   - stdlib + wheels, XOR-encoded as `<name>.enc`: python_stdlib (→ python_stdlib.bin.enc)
+//     and the dependency CLOSURE of the examples' packages (fastapi, cryptography,
+//     pyyaml, tomli-w) + the runtime baseline (sqlite3, micropip), downloaded from
+//     the pinned Pyodide CDN at build time. Raw archives are NOT shipped.
+//   - a PATCHED pyodide-lock.json: vendored packages keep their relative .bin/.whl
+//     file_name (the worker maps `<name>` → `<name>.enc`); every OTHER package's
+//     file_name is rewritten to an absolute jsdelivr URL (CDN fallback for exotic
+//     packages when the network allows).
 //
 // Build-time downloads hit the CDN (CI / a dev machine has open network); only
 // the RUNTIME dependency is what we're eliminating. The output dir is gitignored
@@ -47,6 +52,17 @@ const norm = (s) => s.toLowerCase().replace(/[_.]/g, "-");
 // about the .zip extension/content-type, not the bytes.)
 const debin = (f) => (f.endsWith(".zip") ? f.slice(0, -4) + ".bin" : f);
 
+// Archive assets (stdlib + wheels) are XOR-obfuscated and served as `<name>.enc`,
+// so a content-inspecting proxy that blocks archive downloads sees opaque bytes.
+// The runtime worker decodes them. XOR is OBFUSCATION, not encryption — keep
+// XOR_KEY in sync with host/src/runtime.worker.ts.
+const XOR_KEY = 0x5a;
+const encode = (buf) => {
+  const o = new Uint8Array(buf);
+  for (let i = 0; i < o.length; i++) o[i] ^= XOR_KEY;
+  return o;
+};
+
 function closure(lock, seeds) {
   // Map normalized name -> package entry (lock keys are already normalized, but
   // be defensive).
@@ -68,11 +84,12 @@ function closure(lock, seeds) {
   return want;
 }
 
+// Download CDN/<file>, XOR-encode it, and write to <dest> (a `.enc` path).
 async function download(file, dest) {
   if (existsSync(dest) && !FORCE) return false;
   const res = await fetch(CDN + file);
   if (!res.ok) throw new Error(`download failed ${res.status}: ${CDN + file}`);
-  writeFileSync(dest, new Uint8Array(await res.arrayBuffer()));
+  writeFileSync(dest, encode(new Uint8Array(await res.arrayBuffer())));
   return true;
 }
 
@@ -82,23 +99,26 @@ async function main() {
   mkdirSync(DEST, { recursive: true });
   const lock = JSON.parse(readFileSync(join(PKG, "pyodide-lock.json"), "utf8"));
 
-  // 1. Core (copy from the npm package). python_stdlib.zip is renamed to .bin
-  //    (loaded via the worker's stdLibURL option).
+  // 1. Core. The non-archive files (.mjs/.asm.js/.asm.wasm) are copied raw —
+  //    they're not archives, so proxies pass them. python_stdlib.zip IS an
+  //    archive, so it's XOR-encoded and served as python_stdlib.bin.enc (the
+  //    worker requests python_stdlib.bin via stdLibURL and decodes the .enc).
   for (const f of CORE) copyFileSync(join(PKG, f), join(DEST, f));
-  copyFileSync(join(PKG, "python_stdlib.zip"), join(DEST, "python_stdlib.bin"));
-  console.log(`core: ${CORE.length + 1} files copied (pyodide ${VERSION})`);
+  writeFileSync(join(DEST, "python_stdlib.bin.enc"), encode(readFileSync(join(PKG, "python_stdlib.zip"))));
+  console.log(`core: ${CORE.length} raw + python_stdlib.bin.enc (pyodide ${VERSION})`);
 
-  // 2. Wheel closure (download from the pinned CDN; .zip → .bin on save).
+  // 2. Wheel closure (download from the pinned CDN; XOR-encoded → `<name>.enc`).
   const want = closure(lock, SEEDS);
   // Resolve entries case-insensitively (lock keys are normalized, but be safe).
   const byName = new Map(Object.entries(lock.packages).map(([k, v]) => [norm(k), v]));
   const wheelFiles = [...want].map((n) => byName.get(n).file_name);
   let got = 0;
-  for (const f of wheelFiles) if (await download(f, join(DEST, debin(f)))) got++;
+  for (const f of wheelFiles) if (await download(f, join(DEST, debin(f) + ".enc"))) got++;
   console.log(`wheels: ${wheelFiles.length} in closure (${got} downloaded, ${wheelFiles.length - got} cached)`);
 
-  // 3. Patched lock: vendored packages stay relative + .zip→.bin (same-origin);
-  //    everything else gets an absolute jsdelivr file_name (CDN fallback).
+  // 3. Patched lock: vendored packages keep their relative .bin/.whl file_name
+  //    (the worker maps `<name>` → `<name>.enc` and decodes); everything else
+  //    gets an absolute jsdelivr file_name (CDN fallback for exotic packages).
   for (const [k, v] of Object.entries(lock.packages)) {
     if (!v.file_name) continue;
     if (want.has(norm(k))) v.file_name = debin(v.file_name);
@@ -106,9 +126,9 @@ async function main() {
   }
   writeFileSync(join(DEST, "pyodide-lock.json"), JSON.stringify(lock));
 
-  const onDisk = ["python_stdlib.bin", ...CORE, ...wheelFiles.map(debin)];
+  const onDisk = ["python_stdlib.bin.enc", ...CORE, ...wheelFiles.map((f) => debin(f) + ".enc")];
   const total = onDisk.reduce((s, f) => s + statSync(join(DEST, f)).size, 0);
-  console.log(`done → host/public/pyodide/  (~${mb(total)} MB; ${wheelFiles.length} wheels + core)`);
+  console.log(`done → host/public/pyodide/  (~${mb(total)} MB; ${wheelFiles.length} encoded wheels + core)`);
 }
 
 main().catch((e) => {

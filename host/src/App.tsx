@@ -87,7 +87,7 @@ function pickFileFallback(): Promise<File | null> {
 }
 
 const PREFS_KEY = "vessel.prefs";
-const DEFAULT_PREFS: Prefs = { cache: true, warnNet: true, multiWin: true, theme: "default" };
+const DEFAULT_PREFS: Prefs = { cache: true, warnNet: true, multiWin: true, theme: "default", source: "encoded" };
 
 function shortError(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -256,7 +256,7 @@ export function App() {
       try {
         const wr = createWorkerRuntime();
         worker.current = wr;
-        await wr.init(bundle, effectiveOrigins); // Pyodide + bundle boot in the worker
+        await wr.init(bundle, effectiveOrigins, prefs.source); // Pyodide + bundle boot in the worker
         const runtime = wr.runtime;
 
         autosave.current?.dispose();
@@ -378,6 +378,14 @@ export function App() {
   const setBundleTheme = useCallback((theme: string) => {
     setPrefs((p) => {
       const next = { ...p, theme };
+      localStorage.setItem(PREFS_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const setSource = useCallback((source: "encoded" | "cdn") => {
+    setPrefs((p) => {
+      const next = { ...p, source };
       localStorage.setItem(PREFS_KEY, JSON.stringify(next));
       return next;
     });
@@ -588,7 +596,7 @@ export function App() {
       )}
 
       {settingsOpen && (
-        <Settings prefs={prefs} onToggle={togglePref} onSetTheme={setBundleTheme} onClose={() => setSettingsOpen(false)} />
+        <Settings prefs={prefs} onToggle={togglePref} onSetTheme={setBundleTheme} onSetSource={setSource} onClose={() => setSettingsOpen(false)} />
       )}
       {permissionReq && (
         <PermissionModal

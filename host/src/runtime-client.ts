@@ -5,8 +5,9 @@ import type { RuntimeWorkerApi } from "./runtime.worker";
 export interface WorkerRuntime {
   /** Async runtime proxy (dispatch/snapshotDb forward to the worker). */
   runtime: VesselRuntime;
-  /** Boot Pyodide + the bundle inside the worker, locked to `allowedOrigins`. */
-  init(bundle: BundleParts, allowedOrigins: string[]): Promise<void>;
+  /** Boot Pyodide + the bundle inside the worker, locked to `allowedOrigins`.
+   *  `source` is the runtime-source pref ("encoded" same-origin default, or "cdn"). */
+  init(bundle: BundleParts, allowedOrigins: string[], source: "encoded" | "cdn"): Promise<void>;
   /** Tear the worker down. */
   terminate(): void;
 }
@@ -24,7 +25,7 @@ export function createWorkerRuntime(): WorkerRuntime {
       dispatch: (req) => api.dispatch(req),
       snapshotDb: () => api.snapshotDb(),
     },
-    init: (bundle, allowedOrigins) => api.init(bundle, allowedOrigins),
+    init: (bundle, allowedOrigins, source) => api.init(bundle, allowedOrigins, source),
     terminate: () => worker.terminate(),
   };
 }
