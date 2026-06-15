@@ -9,7 +9,12 @@
   Handling API, `launchQueue` writable handle, and PWA install are Chromium-only.
   Firefox/Safari run in **degraded mode** (file-input open + download-to-save; see
   the host UI's banner).
-- Network on first run (Pyodide core + the FastAPI wheels download once).
+- Network on the first `dev`/`build` run: host `predev`/`prebuild` runs
+  `scripts/vendor-pyodide.mjs`, which downloads the Pyodide wheel set into the
+  gitignored `host/public/pyodide/` once (cached after; `--force` to refresh).
+  At runtime the host then loads Pyodide **same-origin** from `/app/pyodide/` —
+  no third-party CDN, so it works behind corporate proxies that block/strip CORS
+  on CDNs.
 
 No Python toolchain is needed to run a bundle — the backend runs inside Pyodide.
 

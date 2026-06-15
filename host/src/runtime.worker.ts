@@ -11,11 +11,17 @@ import {
 
 // Pyodide runs HERE, in a Web Worker, off the host's main thread. This is the
 // isolation seam the trust phase needs: the worker's network can be brokered
-// separately from the host page's own fetch. The worker loads
-// Pyodide from the CDN itself; the host never runs bundle Python in its context.
+// separately from the host page's own fetch. The host never runs bundle Python
+// in its context.
 
-const PYODIDE_VERSION = "0.29.4";
-const PYODIDE_BASE = `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/`;
+// Pyodide is self-hosted SAME-ORIGIN (vendored into public/pyodide/ by
+// host/scripts/vendor-pyodide.mjs → served at /app/pyodide/). Loading it from
+// our own origin instead of a third-party CDN avoids the failure class where a
+// corporate proxy strips CORS on cross-origin fetches (or sinkholes the CDN):
+// the host page already loads same-origin, so the runtime does too. The patched
+// pyodide-lock.json keeps a jsdelivr fallback for non-vendored (exotic) wheels.
+// The pinned version lives in the `pyodide` npm dep that vendoring copies from.
+const PYODIDE_BASE = "/app/pyodide/";
 
 let runtime: VesselRuntime | null = null;
 

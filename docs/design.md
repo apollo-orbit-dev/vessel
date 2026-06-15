@@ -68,7 +68,7 @@ The whole project is a bet that the Excel model — ubiquitous engine + portable
 
 Five moving parts:
 
-1. **The host PWA.** Served from a static origin you control (GitHub Pages, S3, or self-hosted). Installed once. Its manifest declares `file_handlers` for `.vessel` so the OS routes the file to it. A service worker precaches the Pyodide runtime and the common wheel set so everything works offline and loads instantly on subsequent runs.
+1. **The host PWA.** Served from a static origin you control (GitHub Pages, S3, or self-hosted). Installed once. Its manifest declares `file_handlers` for `.vessel` so the OS routes the file to it. The **Pyodide runtime + common wheel set are self-hosted from that same origin** (vendored at build into `/app/pyodide/`, not pulled from a third-party CDN) — so the runtime loads wherever the host page loads, including behind corporate proxies that block/strip CORS on CDN fetches. A service worker caches them (same-origin) so everything works offline and loads instantly on subsequent runs.
 
 2. **The launch handler.** `launchQueue.setConsumer(params => …)` receives `params.files`, each a `FileSystemFileHandle`. Crucially, the handle delivered on launch is **writable** with permission, which is what kills the save prompt. The host reads the bundle and, on save, writes back to this same handle.
 

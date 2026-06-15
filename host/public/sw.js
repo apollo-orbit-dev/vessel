@@ -2,12 +2,11 @@
 //
 // The app-shell HTML is NETWORK-FIRST, so a new deploy is picked up on the next
 // open (the fresh index.html references new content-hashed assets, which are then
-// fetched). Content-hashed assets and the pinned Pyodide CDN are CACHE-FIRST
-// (immutable / version-pinned). Navigation falls back to cache when offline. Other
-// origins are never touched, so bundle network egress (the manifest allowlist) is
-// unaffected.
-const CACHE = "vessel-cache-v1-pyodide-0.29.4";
-const PYODIDE_CDN = "https://cdn.jsdelivr.net/pyodide/";
+// fetched). Content-hashed assets and the self-hosted Pyodide runtime (same-origin,
+// under /app/pyodide/) are CACHE-FIRST (immutable / version-pinned). Navigation
+// falls back to cache when offline. Other origins are never touched, so bundle
+// network egress (the manifest allowlist) is unaffected.
+const CACHE = "vessel-cache-v2-pyodide-0.29.4-selfhosted";
 
 self.addEventListener("install", () => self.skipWaiting());
 
@@ -51,11 +50,10 @@ self.addEventListener("fetch", (event) => {
   if (req.method !== "GET") return;
   const url = new URL(req.url);
   const sameOrigin = url.origin === self.location.origin;
-  const isPyodide = url.href.startsWith(PYODIDE_CDN);
-  if (!sameOrigin && !isPyodide) return; // leave bundle egress / other origins alone
+  if (!sameOrigin) return; // leave bundle egress / other origins (incl. exotic-wheel CDN fallback) alone
 
   // App-shell HTML: network-first so deploys propagate. Everything else (hashed
-  // assets, Pyodide): cache-first.
+  // assets + the self-hosted Pyodide runtime under /app/pyodide/): cache-first.
   if (sameOrigin && req.mode === "navigate") {
     event.respondWith(networkFirst(req));
   } else {
