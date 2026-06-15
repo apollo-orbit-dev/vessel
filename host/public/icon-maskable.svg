@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Maskable app icon: opaque full-bleed background with the Vessel mark kept
+       inside the center safe zone (~62%) so platform masks don't clip it. -->
+  <rect width="64" height="64" fill="#eef3f8"/>
+  <g transform="translate(12 12) scale(2)">
+    <rect x="3.5" y="2.5" width="13" height="15" rx="3" fill="none" stroke="#5b86b0" stroke-width="1.6"/>
+    <path d="M3.5 11.5 H16.5" stroke="#5b86b0" stroke-width="1.6"/>
+    <rect x="3.5" y="11.5" width="13" height="6" fill="#5b86b0" fill-opacity="0.12"/>
+  </g>
+</svg>

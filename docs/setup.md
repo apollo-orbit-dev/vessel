@@ -48,6 +48,16 @@ node scripts/verify-degraded.mjs  # drives Firefox through open → run → down
 On Linux this needs Firefox's system libs (`sudo npx playwright install-deps`,
 or `apt-get install libasound2t64`).
 
+**Regenerating the icon PNGs (only when the source SVGs change).** `sharp` is not
+a committed dependency either. The app/file-handler icon PNGs in
+`host/public/` are generated from `icon.svg` / `icon-maskable.svg` /
+`vessel-file.svg`; the output PNGs are committed. To regenerate:
+
+```
+npm i -D --no-save sharp
+node host/scripts/gen-icons.mjs   # rewrites host/public/*.png
+```
+
 ## Landing page (`site/`)
 
 A static marketing page (no build step). Preview it with any static server:
