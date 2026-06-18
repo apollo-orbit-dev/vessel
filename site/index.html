@@ -38,6 +38,7 @@
       <nav class="nav">
         <a href="#examples">Examples</a>
         <a href="#how">How it works</a>
+        <a href="#screenshots">Screenshots</a>
         <a href="#safety">Safety</a>
         <a class="nav-gh" href="https://github.com/apollo-orbit-dev/vessel">GitHub ↗</a>
       </nav>
@@ -122,6 +123,94 @@
             <h3>SQLite in the file</h3>
             <p>State lives in a real SQLite database — and that database travels <em>inside</em> the <code>.vessel</code>. The file is the document.</p>
           </article>
+        </div>
+      </section>
+
+      <section id="theming" class="demo">
+        <p class="eyebrow center">One theme system, every tool</p>
+        <p class="examples-lede">
+          Tools don't hardcode colors — they style with the host's <code>--vessel-*</code> tokens, so every tool follows
+          the host's light/dark and chosen theme automatically. Switch them here and watch it re-theme live:
+        </p>
+        <div class="demo-window">
+          <div class="demo-titlebar">
+            <span class="demo-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span class="demo-name">budget.vessel</span>
+            <span class="demo-controls">
+              <label class="demo-ctl">Theme
+                <select id="demo-theme" aria-label="Theme">
+                  <option value="default">Default</option>
+                  <option value="slate">Slate</option>
+                  <option value="warm">Warm</option>
+                </select>
+              </label>
+              <button id="demo-mode" type="button" class="demo-mode">☾ Dark</button>
+            </span>
+          </div>
+          <iframe id="demo-frame" class="demo-frame" title="Live theming preview"></iframe>
+        </div>
+        <p class="examples-foot">
+          The same tokens a bundle reads — see
+          <a href="https://github.com/apollo-orbit-dev/vessel/blob/main/skills/vessel-author/SKILL.md">the authoring skill</a>.
+        </p>
+      </section>
+
+      <section id="build-with-ai" class="selfhost">
+        <p class="eyebrow center">Build one with your AI</p>
+        <div class="selfhost-inner">
+          <p class="selfhost-lede">
+            Authoring a <code>.vessel</code> has a few non-obvious rules — an async-only Python backend, a single-file
+            UI, declared packages. Hand your AI agent the Vessel authoring skill and it produces valid bundles, correct
+            manifest and all.
+          </p>
+          <div class="codeblock">
+            <button class="copy" type="button" aria-label="Copy">Copy</button>
+            <pre><code>Follow the Vessel authoring skill, then build me a .vessel tool:
+https://getvessel.dev/skills/vessel-author/SKILL.md</code></pre>
+          </div>
+          <p class="selfhost-foot">
+            Paste that into Claude or your agent, or
+            <a href="https://github.com/apollo-orbit-dev/vessel/blob/main/skills/vessel-author/SKILL.md">read the skill</a>.
+            Prefer a CLI? <code>npm i -g vessel-cli</code>, then <code>vessel new</code> /
+            <code>dev</code> / <code>build</code>.
+          </p>
+        </div>
+      </section>
+
+      <section id="run-it-yourself" class="selfhost">
+        <p class="eyebrow center">Run it yourself</p>
+        <div class="selfhost-inner">
+          <p class="selfhost-lede">
+            Prefer not to depend on getvessel.dev? The host is a static app with no backend — build and serve it
+            yourself and it runs identically (and offline). Same code, your origin.
+          </p>
+          <div class="codeblock">
+            <button class="copy" id="copyCmds" type="button" aria-label="Copy commands">Copy</button>
+            <pre id="cmds"><code>git clone https://github.com/apollo-orbit-dev/vessel.git
+cd vessel
+npm install
+npm run build -w @vessel/host
+npm run preview -w @vessel/host</code></pre>
+          </div>
+          <p class="selfhost-foot">
+            Then open the printed <code>http://localhost:4173/app/</code> in Chromium and install the PWA —
+            localhost is a secure context, so file handling + install work. Full guide in the
+            <a href="https://github.com/apollo-orbit-dev/vessel">docs</a>.
+          </p>
+        </div>
+      </section>
+
+      <section id="safety" class="safety">
+        <div class="safety-inner">
+          <p class="eyebrow">The safety claim</p>
+          <p class="claim">
+            Opening a <code>.vessel</code> is <span class="ink">no more dangerous than opening a web page.</span>
+          </p>
+          <p class="claim-sub">
+            Bundle code is boxed twice — a sandboxed iframe around the UI, a WASM sandbox around the Python — with
+            default-deny network egress and a manifest allowlist. The host never hands its writable file handle to bundle
+            code. Bundles can be Ed25519-signed so you can see who published them.
+          </p>
         </div>
       </section>
 
@@ -214,91 +303,44 @@
         </p>
       </section>
 
-      <section id="theming" class="demo">
-        <p class="eyebrow center">One theme system, every tool</p>
-        <p class="examples-lede">
-          Tools don't hardcode colors — they style with the host's <code>--vessel-*</code> tokens, so every tool follows
-          the host's light/dark and chosen theme automatically. Switch them here and watch it re-theme live:
+      <section id="screenshots" class="shots">
+        <p class="eyebrow center">See it running</p>
+        <p class="shots-lede">
+          Real <code>.vessel</code> tools open in the host — same chrome, your data inside the file.
         </p>
-        <div class="demo-window">
-          <div class="demo-titlebar">
-            <span class="demo-dots" aria-hidden="true"><i></i><i></i><i></i></span>
-            <span class="demo-name">budget.vessel</span>
-            <span class="demo-controls">
-              <label class="demo-ctl">Theme
-                <select id="demo-theme" aria-label="Theme">
-                  <option value="default">Default</option>
-                  <option value="slate">Slate</option>
-                  <option value="warm">Warm</option>
-                </select>
-              </label>
-              <button id="demo-mode" type="button" class="demo-mode">☾ Dark</button>
-            </span>
-          </div>
-          <iframe id="demo-frame" class="demo-frame" title="Live theming preview"></iframe>
-        </div>
-        <p class="examples-foot">
-          The same tokens a bundle reads — see
-          <a href="https://github.com/apollo-orbit-dev/vessel/blob/main/skills/vessel-author/SKILL.md">the authoring skill</a>.
-        </p>
-      </section>
-
-      <section id="build-with-ai" class="selfhost">
-        <p class="eyebrow center">Build one with your AI</p>
-        <div class="selfhost-inner">
-          <p class="selfhost-lede">
-            Authoring a <code>.vessel</code> has a few non-obvious rules — an async-only Python backend, a single-file
-            UI, declared packages. Hand your AI agent the Vessel authoring skill and it produces valid bundles, correct
-            manifest and all.
-          </p>
-          <div class="codeblock">
-            <button class="copy" type="button" aria-label="Copy">Copy</button>
-            <pre><code>Follow the Vessel authoring skill, then build me a .vessel tool:
-https://getvessel.dev/skills/vessel-author/SKILL.md</code></pre>
-          </div>
-          <p class="selfhost-foot">
-            Paste that into Claude or your agent, or
-            <a href="https://github.com/apollo-orbit-dev/vessel/blob/main/skills/vessel-author/SKILL.md">read the skill</a>.
-            Prefer a CLI? <code>npm i -g vessel-cli</code>, then <code>vessel new</code> /
-            <code>dev</code> / <code>build</code>.
-          </p>
-        </div>
-      </section>
-
-      <section id="run-it-yourself" class="selfhost">
-        <p class="eyebrow center">Run it yourself</p>
-        <div class="selfhost-inner">
-          <p class="selfhost-lede">
-            Prefer not to depend on getvessel.dev? The host is a static app with no backend — build and serve it
-            yourself and it runs identically (and offline). Same code, your origin.
-          </p>
-          <div class="codeblock">
-            <button class="copy" id="copyCmds" type="button" aria-label="Copy commands">Copy</button>
-            <pre id="cmds"><code>git clone https://github.com/apollo-orbit-dev/vessel.git
-cd vessel
-npm install
-npm run build -w @vessel/host
-npm run preview -w @vessel/host</code></pre>
-          </div>
-          <p class="selfhost-foot">
-            Then open the printed <code>http://localhost:4173/app/</code> in Chromium and install the PWA —
-            localhost is a secure context, so file handling + install work. Full guide in the
-            <a href="https://github.com/apollo-orbit-dev/vessel">docs</a>.
-          </p>
-        </div>
-      </section>
-
-      <section id="safety" class="safety">
-        <div class="safety-inner">
-          <p class="eyebrow">The safety claim</p>
-          <p class="claim">
-            Opening a <code>.vessel</code> is <span class="ink">no more dangerous than opening a web page.</span>
-          </p>
-          <p class="claim-sub">
-            Bundle code is boxed twice — a sandboxed iframe around the UI, a WASM sandbox around the Python — with
-            default-deny network egress and a manifest allowlist. The host never hands its writable file handle to bundle
-            code. Bundles can be Ed25519-signed so you can see who published them.
-          </p>
+        <div class="shots-grid">
+          <figure class="shot featured">
+            <img src="./screenshots/vessel-host.png" alt="The Vessel host launcher with recent .vessel files" loading="lazy" />
+            <figcaption><b>The host</b> — your installed launcher; open any <code>.vessel</code> and it runs offline.</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="./screenshots/journal.png" alt="Journal — dated entries with full-text search" loading="lazy" />
+            <figcaption><b>Journal</b> — dated entries with SQLite full-text search.</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="./screenshots/csv-explorer.png" alt="CSV Explorer — SQL filter and sort over thousands of rows" loading="lazy" />
+            <figcaption><b>CSV Explorer</b> — real SQL filter/sort over 4,800 rows.</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="./screenshots/job-tracker.png" alt="Job Tracker — a kanban pipeline board" loading="lazy" />
+            <figcaption><b>Job Tracker</b> — an Applied → Screen → Onsite → Offer board.</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="./screenshots/recipe-planner.png" alt="Recipe Planner — weekly plan and shopping list" loading="lazy" />
+            <figcaption><b>Recipe Planner</b> — a weekly plan and a generated shopping list.</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="./screenshots/habits.png" alt="Habits — a 21-day streak grid" loading="lazy" />
+            <figcaption><b>Habits</b> — a 21-day streak grid with per-habit streaks.</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="./screenshots/regex-tester.png" alt="Regex Tester — the real Python re engine" loading="lazy" />
+            <figcaption><b>Regex Tester</b> — the real Python <code>re</code> engine, library saved in the file.</figcaption>
+          </figure>
+          <figure class="shot featured">
+            <img src="./screenshots/spectra-theme-gen.png" alt="Spectra — a design-token studio built as a .vessel" loading="lazy" />
+            <figcaption><b>Spectra</b> — a design-token studio with live WCAG contrast, itself a <code>.vessel</code>.</figcaption>
+          </figure>
         </div>
       </section>
     </main>

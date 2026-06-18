@@ -411,7 +411,7 @@ h3 {
 }
 
 /* ---- safety ---- */
-.safety {
+main > section:last-child {
   border-bottom: none;
 }
 .safety-inner {
@@ -525,10 +525,15 @@ h3 {
   .how-grid {
     grid-template-columns: 1fr;
   }
-  .examples-grid {
-    grid-template-columns: 1fr;
-  }
   .demo-name {
+    display: none;
+  }
+}
+
+/* Phones: the in-page anchor links overflow the bar. Keep the wordmark +
+   GitHub link and drop the section jumps (the page still scrolls). */
+@media (max-width: 600px) {
+  .nav a:not(.nav-gh) {
     display: none;
   }
 }
@@ -544,7 +549,7 @@ h3 {
 }
 .examples-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: clamp(16px, 2.4vw, 24px);
 }
 .ex-card {
@@ -689,4 +694,62 @@ h3 {
   height: 332px;
   border: 0;
   background: #fff;
+}
+
+/* ---- screenshots gallery ---- */
+.shots-lede {
+  max-width: 60ch;
+  margin: 0 auto 40px;
+  text-align: center;
+  font-size: 15px;
+  color: var(--text-mid);
+}
+.shots-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: clamp(16px, 2.4vw, 24px);
+}
+.shot {
+  margin: 0;
+  background: var(--surface);
+  border: 1px solid var(--hair);
+  border-radius: 14px;
+  overflow: hidden;
+  transition: border-color 0.18s, transform 0.18s, box-shadow 0.18s;
+}
+.shot:hover {
+  border-color: var(--accent-border);
+  transform: translateY(-3px);
+  box-shadow: var(--shadow);
+}
+.shot.featured {
+  grid-column: 1 / -1;
+}
+.shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-bottom: 1px solid var(--hair);
+}
+.shot figcaption {
+  padding: 13px 16px;
+  font-size: 13.5px;
+  color: var(--text-mid);
+}
+.shot figcaption b {
+  color: var(--text);
+  font-weight: 600;
+}
+@media (max-width: 860px) {
+  .shots-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Phones: examples drop to a single column. At end-of-file so it wins over the
+   base .examples-grid rule regardless of the media-query order higher up. */
+@media (max-width: 600px) {
+  .examples-grid {
+    grid-template-columns: 1fr;
+  }
 }

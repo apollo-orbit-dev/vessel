@@ -16,6 +16,18 @@ browser.
 **Try it:** [getvessel.dev](https://getvessel.dev) — the host installs from
 [getvessel.dev/app/](https://getvessel.dev/app/).
 
+## Screenshots
+The host — your installed launcher — and a few `.vessel` tools running inside it:
+
+![The Vessel host launcher with recent .vessel files](site/screenshots/vessel-host.png)
+
+| | |
+|---|---|
+| ![CSV Explorer — SQL over thousands of rows](site/screenshots/csv-explorer.png) | ![Journal — full-text search](site/screenshots/journal.png) |
+| ![Job Tracker — pipeline board](site/screenshots/job-tracker.png) | ![Regex Tester — the real Python re engine](site/screenshots/regex-tester.png) |
+
+More on the [landing page](https://getvessel.dev/#screenshots).
+
 ## Quick start
 See [`docs/setup.md`](docs/setup.md).
 
